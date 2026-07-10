@@ -1,0 +1,2 @@
+from_warehouse,to_warehouse,sku_id,distance_km,transfer_cost_per_unit,transferable_qty,need_qty,distance_score,cost_score,inventory_score,total_score
+WH02,WH06,SKU00096,13000,10.9,109,124,0.071,0.155,0.293,0.119
