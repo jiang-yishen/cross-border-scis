@@ -72,9 +72,19 @@ HOLIDAYS_DF = pd.DataFrame({
 
 def load_data():
     """加载销售数据和SKU主数据"""
+    _cn_map = {
+        '日期': 'date', 'SKU编码': 'sku_id', '仓库ID': 'warehouse_id',
+        '销售数量': 'units_sold', '退货数量': 'units_returned',
+        'SKU名称': 'sku_name', '品类': 'category', '供应商ID': 'supplier_id',
+        '单价': 'unit_price', '重量kg': 'weight_kg', '上市日期': 'launch_date',
+        '生命周期月数': 'lifecycle_months', '季节性强度': 'seasonal_strength',
+        '退货率': 'return_rate', '最小起订量': 'moq', '采购提前期天数': 'lead_time_days',
+    }
     sales = pd.read_csv(os.path.join(DATA_DIR, "sales_daily.csv"))
+    sales = sales.rename(columns=_cn_map)
     sales['date'] = pd.to_datetime(sales['date'])
     skus = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"))
+    skus = skus.rename(columns=_cn_map)
     return sales, skus
 
 
@@ -426,11 +436,32 @@ def run_forecast_engine():
     # 合并所有预测
     if all_forecasts:
         forecast_result = pd.concat(all_forecasts, ignore_index=True)
-        forecast_result = forecast_result[[
+        # 动态选择列（mape可能不存在）
+        cols = [
             'sku_id', 'category', 'warehouse_id', 'date',
             'forecast', 'lower', 'upper', 'ensemble',
-            'prophet_weight', 'xgb_weight', 'mape'
-        ]]
+            'prophet_weight', 'xgb_weight'
+        ]
+        if 'mape' in forecast_result.columns:
+            cols.append('mape')
+        forecast_result = forecast_result[cols]
+        
+        rename_map = {
+            'sku_id': 'SKU编码',
+            'category': '品类',
+            'warehouse_id': '仓库编码',
+            'date': '日期',
+            'forecast': '预测销量',
+            'lower': '预测下限',
+            'upper': '预测上限',
+            'ensemble': '集成预测',
+            'prophet_weight': 'Prophet权重',
+            'xgb_weight': 'XGBoost权重'
+        }
+        if 'mape' in forecast_result.columns:
+            rename_map['mape'] = '平均绝对百分比误差(%)'
+        forecast_result = forecast_result.rename(columns=rename_map)
+        
         forecast_result.to_csv(os.path.join(OUTPUT_DIR, "demand_forecast.csv"), 
                                 index=False, encoding="utf-8-sig")
         print(f"\n[OK] 预测结果已保存: {len(forecast_result)} 条记录")
@@ -438,6 +469,13 @@ def run_forecast_engine():
     # 回测统计
     if backtest_results:
         backtest_df = pd.DataFrame(backtest_results)
+        backtest_df = backtest_df.rename(columns={
+            'sku_id': 'SKU编码',
+            'category': '品类',
+            'mape': '平均绝对百分比误差(%)',
+            'prophet_weight': 'Prophet权重',
+            'xgb_weight': 'XGBoost权重'
+        })
         backtest_df.to_csv(os.path.join(OUTPUT_DIR, "forecast_backtest.csv"), 
                            index=False, encoding="utf-8-sig")
         
@@ -468,3 +506,5 @@ def run_forecast_engine():
 
 if __name__ == '__main__':
     run_forecast_engine()
+
+main = run_forecast_engine

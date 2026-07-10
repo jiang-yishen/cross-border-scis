@@ -1,4 +1,4 @@
-﻿warehouse_id,warehouse_name,country,region,coverage,headway_days,last_mile_days
+﻿仓库ID,仓库名称,国家,区域,覆盖范围,海运天数,尾程天数
 WH01,美国东岸仓,美国,北美东部,美国东部/加拿大,35,4
 WH02,美国西岸仓,美国,北美西部,美国西部,25,4
 WH03,欧洲仓(荷兰),荷兰,欧盟,欧盟国家,40,3

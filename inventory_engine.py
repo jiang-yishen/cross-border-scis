@@ -262,18 +262,54 @@ def main():
     sku_df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"))
     wh_df = pd.read_csv(os.path.join(DATA_DIR, "warehouse_master.csv"))
     sales_df = pd.read_csv(os.path.join(DATA_DIR, "sales_daily.csv"))
+    
+    # 中文表头 → 英文列名映射
+    _cn_map = {
+        '日期': 'date', 'SKU编码': 'sku_id', '仓库ID': 'warehouse_id',
+        '销售数量': 'units_sold', '退货数量': 'units_returned',
+        'SKU名称': 'sku_name', '品类': 'category', '供应商ID': 'supplier_id',
+        '单价': 'unit_price', '重量kg': 'weight_kg', '上市日期': 'launch_date',
+        '生命周期月数': 'lifecycle_months', '季节性强度': 'seasonal_strength',
+        '退货率': 'return_rate', '仓库名称': 'warehouse_name', '国家': 'country',
+        '区域': 'region', '覆盖范围': 'coverage',
+        '最小起订量': 'moq', '采购提前期天数': 'lead_time_days',
+        '海运天数': 'headway_days', '尾程天数': 'last_mile_days'
+    }
+    sales_df = sales_df.rename(columns=_cn_map)
+    sku_df = sku_df.rename(columns=_cn_map)
+    wh_df = wh_df.rename(columns=_cn_map)
+    
     sales_df['date'] = pd.to_datetime(sales_df['date'])
 
     # 1. 库存快照
     print("\n[1/6] 生成库存快照...")
     inventory_df = generate_inventory_snapshot(sku_df, wh_df, sales_df)
-    inventory_df.to_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), index=False)
+    # 先保存英文版用于内部计算，最后再转中文
+    inventory_df_raw = inventory_df.copy()
+    inventory_df_display = inventory_df.rename(columns={
+        'sku_id': 'SKU编码',
+        'warehouse_id': '仓库ID',
+        'available_qty': '可用数量',
+        'in_transit_qty': '在途数量',
+        'total_qty': '总数量',
+        'avg_age_days': '平均库龄天数',
+        'overage_qty': '超龄数量',
+        'unit_price': '单价',
+        'avg_units_sold': '日均销量'
+    })
+    inventory_df_display.to_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), index=False)
     print(f"   OK 库存快照：{len(inventory_df)} 条")
 
     # 2. 调拨成本矩阵
     print("\n[2/6] 生成调拨成本矩阵...")
     transfer_cost_df, distance_matrix, transfer_cost = generate_transfer_cost_matrix(wh_df)
-    transfer_cost_df.to_csv(os.path.join(DATA_DIR, "transfer_cost_matrix.csv"), index=False)
+    transfer_cost_df_display = transfer_cost_df.rename(columns={
+        'from_warehouse': '出发仓库',
+        'to_warehouse': '目标仓库',
+        'distance_km': '距离km',
+        'transfer_cost_per_unit': '调拨单位成本'
+    })
+    transfer_cost_df_display.to_csv(os.path.join(DATA_DIR, "transfer_cost_matrix.csv"), index=False)
     print(f"   OK 调拨成本矩阵：{len(transfer_cost_df)} 条")
 
     # 3. ABC-XYZ 分类
@@ -285,30 +321,68 @@ def main():
 
     # 4. 安全库存 / ROP / EOQ
     print("\n[4/6] 计算安全库存、ROP、EOQ...")
-    replenishment_df = calculate_replenishment(inventory_df, abc_xyz, sku_df, wh_df, sales_df)
+    replenishment_df = calculate_replenishment(inventory_df_raw, abc_xyz, sku_df, wh_df, sales_df)
 
     # 5. 调拨建议
     print("\n[5/6] 生成调拨建议...")
     transfer_rec_df = generate_transfer_recommendations(replenishment_df, distance_matrix, transfer_cost)
 
-    # 6. 输出
+    # 6. 输出（计算完成后再转中文表头）
     print("\n[6/6] 保存输出文件...")
+    replenishment_df = replenishment_df.rename(columns={
+        'sku_id': 'SKU编码',
+        'warehouse_id': '仓库ID',
+        'warehouse_name': '仓库名称',
+        'category': '品类',
+        'abc_class': 'ABC分类',
+        'xyz_class': 'XYZ分类',
+        'abc_xyz': 'ABC-XYZ组合',
+        'unit_price': '单价',
+        'avg_units_sold': '日均销量',
+        'lead_time_days': '采购提前期天数',
+        'safety_stock': '安全库存',
+        'rop': '再订货点',
+        'eoq': '经济订货量',
+        'moq': '最小起订量',
+        'available_qty': '可用数量',
+        'in_transit_qty': '在途数量',
+        'total_qty': '总数量',
+        'avg_age_days': '平均库龄天数',
+        'overage_qty': '超龄数量',
+        'stock_alert': '库存预警',
+        'age_alert': '库龄预警',
+        'days_to_stockout': '预计缺货天数',
+        'z_value': 'Z值'
+    })
     replenishment_df.to_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), index=False)
     print(f"   OK 补货计划：{len(replenishment_df)} 条 -> output/replenishment_plan.csv")
 
     if len(transfer_rec_df) > 0:
+        transfer_rec_df = transfer_rec_df.rename(columns={
+            'from_warehouse': '出发仓库',
+            'to_warehouse': '目标仓库',
+            'sku_id': 'SKU编码',
+            'distance_km': '距离km',
+            'transfer_cost_per_unit': '调拨单位成本',
+            'transferable_qty': '可调拨数量',
+            'need_qty': '需求数量',
+            'distance_score': '距离评分',
+            'cost_score': '成本评分',
+            'inventory_score': '库存评分',
+            'total_score': '综合评分'
+        })
         transfer_rec_df.to_csv(os.path.join(OUTPUT_DIR, "transfer_recommendation.csv"), index=False)
         print(f"   OK 调拨建议：{len(transfer_rec_df)} 条 -> output/transfer_recommendation.csv")
     else:
         print(f"   ! 调拨建议：无可行调拨方案（红预警SKU在富余仓无超龄库存可转出）")
 
     # 库存健康报告
-    health = replenishment_df.groupby('warehouse_id').agg({
-        'sku_id': 'count', 'available_qty': 'sum', 'total_qty': 'sum', 'overage_qty': 'sum'
+    health = replenishment_df.groupby('仓库ID').agg({
+        'SKU编码': 'count', '可用数量': 'sum', '总数量': 'sum', '超龄数量': 'sum'
     }).reset_index()
-    health.columns = ['warehouse_id', 'sku_count', 'available_total', 'total_inventory', 'overage_total']
-    alert_summary = replenishment_df.groupby(['warehouse_id', 'stock_alert']).size().unstack(fill_value=0).reset_index()
-    health = health.merge(alert_summary, on='warehouse_id', how='left')
+    health.columns = ['仓库ID', 'SKU数量', '可用库存总量', '库存总量', '超龄库存总量']
+    alert_summary = replenishment_df.groupby(['仓库ID', '库存预警']).size().unstack(fill_value=0).reset_index()
+    health = health.merge(alert_summary, on='仓库ID', how='left')
     health.to_csv(os.path.join(OUTPUT_DIR, "inventory_health_report.csv"), index=False)
     print(f"   OK 库存健康报告：{len(health)} 个仓库 -> output/inventory_health_report.csv")
 
@@ -317,36 +391,36 @@ def main():
     print("业务逻辑验证")
     print("=" * 60)
 
-    abc_dist = replenishment_df.groupby('abc_class')['sku_id'].nunique()
+    abc_dist = replenishment_df.groupby('ABC分类')['SKU编码'].nunique()
     print(f"\n[验证1] ABC分类分布：")
     for cls in ['A', 'B', 'C']:
         cnt = abc_dist.get(cls, 0)
         print(f"   {cls}类: {cnt} 个SKU ({cnt / 100 * 100:.0f}%)")
 
-    ss_by_abc = replenishment_df.groupby('abc_class')['safety_stock'].mean()
+    ss_by_abc = replenishment_df.groupby('ABC分类')['安全库存'].mean()
     print(f"\n[验证2] 平均安全库存（A>B>C 预期）：")
     for cls in ['A', 'B', 'C']:
         print(f"   {cls}类: {ss_by_abc.get(cls, 0):.1f} 件")
 
-    alert_dist = replenishment_df['stock_alert'].value_counts()
+    alert_dist = replenishment_df['库存预警'].value_counts()
     print(f"\n[验证3] 库存预警分布：")
     for alert, cnt in alert_dist.items():
         print(f"   {alert}: {cnt} 条 ({cnt / len(replenishment_df) * 100:.1f}%)")
 
     if len(transfer_rec_df) > 0:
         print(f"\n[验证4] 调拨建议：{len(transfer_rec_df)} 条")
-        print(f"   平均距离: {transfer_rec_df['distance_km'].mean():.0f} km")
-        print(f"   平均成本: ${transfer_rec_df['transfer_cost_per_unit'].mean():.2f}/件")
-        print(f"   平均评分: {transfer_rec_df['total_score'].mean():.3f}")
+        print(f"   平均距离: {transfer_rec_df['距离km'].mean():.0f} km")
+        print(f"   平均成本: ${transfer_rec_df['调拨单位成本'].mean():.2f}/件")
+        print(f"   平均评分: {transfer_rec_df['综合评分'].mean():.3f}")
     else:
         print(f"\n[验证4] 调拨建议：无可行方案（符合业务逻辑）")
 
-    age_alert_dist = replenishment_df['age_alert'].apply(lambda x: x.split('（')[0]).value_counts()
+    age_alert_dist = replenishment_df['库龄预警'].apply(lambda x: x.split('（')[0]).value_counts()
     print(f"\n[验证5] 库龄预警分布：")
     for alert, cnt in age_alert_dist.items():
         print(f"   {alert}: {cnt} 条 ({cnt / len(replenishment_df) * 100:.1f}%)")
 
-    total_value = (replenishment_df['available_qty'] * replenishment_df['unit_price']).sum()
+    total_value = (replenishment_df['可用数量'] * replenishment_df['单价']).sum()
     print(f"\n[验证6] 总库存价值: ${total_value:,.0f}")
 
     print("\n" + "=" * 60)

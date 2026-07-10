@@ -85,7 +85,15 @@ HOLIDAYS = {
 def generate_warehouses(output_dir):
     """生成仓库主数据"""
     df = pd.DataFrame(WAREHOUSES)
-    df.to_csv(os.path.join(output_dir, "warehouse_master.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "warehouse_id": "仓库ID",
+        "warehouse_name": "仓库名称",
+        "country": "国家",
+        "region": "区域",
+        "coverage": "覆盖范围",
+        "headway_days": "海运天数",
+        "last_mile_days": "尾程天数",
+    })    .to_csv(os.path.join(output_dir, "warehouse_master.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ warehouse_master.csv: {len(df)} 个仓库")
     return df
 
@@ -123,7 +131,20 @@ def generate_skus(output_dir, total_skus=1000):
             sku_id += 1
     
     df = pd.DataFrame(sku_list)
-    df.to_csv(os.path.join(output_dir, "sku_master.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "sku_id": "SKU编码",
+        "sku_name": "SKU名称",
+        "category": "品类",
+        "supplier_id": "供应商ID",
+        "unit_price": "单价",
+        "weight_kg": "重量kg",
+        "launch_date": "上市日期",
+        "lifecycle_months": "生命周期月数",
+        "seasonal_strength": "季节性强度",
+        "return_rate": "退货率",
+        "moq": "最小起订量",
+        "lead_time_days": "采购提前期天数",
+    })    .to_csv(os.path.join(output_dir, "sku_master.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ sku_master.csv: {len(df)} 个SKU")
     print("   品类分布:", dict(df["category"].value_counts()))
     return df
@@ -228,7 +249,13 @@ def generate_sales(output_dir, df_skus, df_warehouses, chunk_size=200):
         all_sales.extend(sku_sales)
     
     df = pd.DataFrame(all_sales)
-    df.to_csv(os.path.join(output_dir, "sales_daily.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "date": "日期",
+        "sku_id": "SKU编码",
+        "warehouse_id": "仓库ID",
+        "units_sold": "销售数量",
+        "units_returned": "退货数量",
+    })    .to_csv(os.path.join(output_dir, "sales_daily.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ sales_daily.csv: {len(df):,} 条记录")
     return df
 
@@ -275,7 +302,18 @@ def generate_purchase_orders(output_dir, df_skus, df_warehouses):
             current_date += timedelta(days=random.randint(25, 55))
     
     df = pd.DataFrame(po_records)
-    df.to_csv(os.path.join(output_dir, "purchase_orders.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "po_id": "采购订单ID",
+        "sku_id": "SKU编码",
+        "supplier_id": "供应商ID",
+        "warehouse_id": "仓库ID",
+        "order_date": "下单日期",
+        "qty_ordered": "订购数量",
+        "qty_received": "到货数量",
+        "unit_cost": "单位成本",
+        "eta_date": "预计到货日期",
+        "status": "订单状态",
+    })    .to_csv(os.path.join(output_dir, "purchase_orders.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ purchase_orders.csv: {len(df):,} 条记录")
     return df
 
@@ -320,7 +358,18 @@ def generate_logistics(output_dir, df_pos):
         })
     
     df = pd.DataFrame(logistics)
-    df.to_csv(os.path.join(output_dir, "logistics_tracking.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "tracking_id": "物流单号",
+        "po_id": "采购订单ID",
+        "sku_id": "SKU编码",
+        "warehouse_id": "仓库ID",
+        "route": "运输路线",
+        "ship_date": "发货日期",
+        "eta_date": "预计到达日期",
+        "actual_arrival": "实际到达日期",
+        "status": "物流状态",
+        "carrier": "承运商",
+    })    .to_csv(os.path.join(output_dir, "logistics_tracking.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ logistics_tracking.csv: {len(df):,} 条记录")
     return df
 
@@ -366,7 +415,18 @@ def generate_inventory_snapshot(output_dir, df_skus, df_warehouses, df_sales, df
             })
     
     df = pd.DataFrame(inventory)
-    df.to_csv(os.path.join(output_dir, "inventory_snapshot.csv"), index=False, encoding="utf-8-sig")
+    df.rename(columns={
+        "sku_id": "SKU编码",
+        "warehouse_id": "仓库ID",
+        "on_hand": "在库数量",
+        "in_transit": "在途数量",
+        "reserved": "预留数量",
+        "available": "可用数量",
+        "safety_stock": "安全库存",
+        "reorder_point": "再订货点",
+        "max_stock": "最大库存",
+        "snapshot_date": "快照日期",
+    })    .to_csv(os.path.join(output_dir, "inventory_snapshot.csv"), index=False, encoding="utf-8-sig")
     print(f"✅ inventory_snapshot.csv: {len(df):,} 条记录")
     return df
 

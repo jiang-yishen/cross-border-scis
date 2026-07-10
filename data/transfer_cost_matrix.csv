@@ -1,4 +1,4 @@
-from_warehouse,to_warehouse,distance_km,transfer_cost_per_unit
+出发仓库,目标仓库,距离km,调拨单位成本
 WH01,WH02,4000,3.7
 WH01,WH03,6000,5.3
 WH01,WH04,5500,4.9
