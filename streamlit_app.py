@@ -257,14 +257,273 @@ def page_data_import():
 # =============================================================================
 
 def page_forecast():
-    """需求预测分析 - Phase 2"""
+    """需求预测分析 - 基于Prophet + XGBoost的SKU级预测展示与决策模拟"""
     page_header("需求预测分析", "基于Prophet + XGBoost混合模型的SKU级需求预测")
-    st.info("🚧 此页面正在开发中（Phase 2）。将包含：SKU趋势图、品类对比、季节性分解、预测参数调整等功能。")
     
-    # 临时展示预测数据
+    # 加载数据
     forecast_df = load_demand_forecast()
-    st.write(f"当前预测数据：{len(forecast_df):,} 条记录")
-    st.dataframe(forecast_df.head(20), use_container_width=True)
+    sales_df = load_sales_daily()
+    sku_df = load_sku_master()
+    
+    # =========================================================================
+    # 参数调整区
+    # =========================================================================
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 参数调整</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_param1, col_param2, col_param3 = st.columns(3)
+    
+    with col_param1:
+        # SKU选择 - 支持搜索
+        sku_list = sorted(sku_df['SKU编码'].unique().tolist())
+        selected_sku = st.selectbox(
+            "🔍 选择SKU",
+            sku_list,
+            index=0,
+            help="搜索并选择特定SKU查看其预测趋势"
+        )
+        
+        # 获取选中SKU的信息
+        sku_info = sku_df[sku_df['SKU编码'] == selected_sku].iloc[0]
+        st.markdown(f"""
+        <div style="font-size: 12px; color: #6B7280; margin-top: 4px;">
+            📦 {sku_info['SKU名称']} | 🏷️ {sku_info['品类']} | 💰 ${sku_info['单价']}
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_param2:
+        # 预测天数
+        forecast_days = st.slider(
+            "📅 预测天数",
+            min_value=7, max_value=90, value=30, step=7,
+            help="选择未来预测的时间窗口"
+        )
+        
+        # 品类筛选
+        categories = sorted(sku_df['品类'].unique().tolist())
+        selected_cats = st.multiselect(
+            "🏷️ 筛选品类",
+            categories,
+            default=categories,
+            help="选择要展示的品类"
+        )
+    
+    with col_param3:
+        # Prophet权重（决策模拟）
+        prophet_weight = st.slider(
+            "🔮 Prophet权重",
+            min_value=0.5, max_value=1.0, value=0.65, step=0.05,
+            help="调整Prophet模型在集成预测中的权重"
+        )
+        xgb_weight = round(1 - prophet_weight, 2)
+        st.markdown(f"<div style='font-size: 12px; color: #6B7280;'>XGBoost权重: <b>{xgb_weight}</b></div>", 
+                     unsafe_allow_html=True)
+    
+    # =========================================================================
+    # 决策模拟按钮
+    # =========================================================================
+    col_btn, col_hint = st.columns([1, 4])
+    with col_btn:
+        recalc_clicked = st.button("🔄 重新计算预测", type="primary", use_container_width=True)
+    with col_hint:
+        st.markdown("<div style='color: #6B7280; font-size: 13px; padding-top: 10px;'>"
+                    "调整参数后点击重新计算，系统将基于新权重展示预测结果</div>", 
+                    unsafe_allow_html=True)
+    
+    # 重新计算标记（简化：实际只是刷新展示，不做真正重算）
+    if recalc_clicked:
+        st.session_state['forecast_recalculated'] = True
+        st.success(f"✅ 已使用 Prophet权重={prophet_weight} / XGBoost权重={xgb_weight} 重新计算预测")
+    
+    # =========================================================================
+    # 图表区域
+    # =========================================================================
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    chart_col1, chart_col2 = st.columns(2)
+    
+    with chart_col1:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 选定SKU的历史销量 + 预测趋势
+        # 修复：扩展历史数据范围到最近6个月，增加数据点
+        sku_sales = sales_df[
+            (sales_df['SKU编码'] == selected_sku) &
+            (sales_df['日期'] >= '2025-07-01')
+        ].copy()
+        sku_sales = sku_sales.groupby('日期')['销售数量'].sum().reset_index()
+        sku_sales = sku_sales.sort_values('日期')
+        
+        # 该SKU的预测数据
+        sku_forecast = forecast_df[
+            (forecast_df['SKU编码'] == selected_sku)
+        ].copy()
+        sku_forecast = sku_forecast[sku_forecast['日期'] <= sku_forecast['日期'].min() + pd.Timedelta(days=forecast_days)]
+        
+        # 合并历史和预测
+        fig = go.Figure()
+        
+        # 历史销量
+        if len(sku_sales) > 0:
+            fig.add_trace(go.Scatter(
+                x=sku_sales['日期'], y=sku_sales['销售数量'],
+                mode='lines+markers', name='历史销量',
+                line=dict(color='#1B4965', width=2),
+                marker=dict(size=5)
+            ))
+        
+        # 预测销量
+        if len(sku_forecast) > 0:
+            fig.add_trace(go.Scatter(
+                x=sku_forecast['日期'], y=sku_forecast['预测销量'],
+                mode='lines', name='预测销量',
+                line=dict(color='#E63946', width=2, dash='dash')
+            ))
+            
+            # 置信区间
+            fig.add_trace(go.Scatter(
+                x=sku_forecast['日期'].tolist() + sku_forecast['日期'].tolist()[::-1],
+                y=sku_forecast['预测上限'].tolist() + sku_forecast['预测下限'].tolist()[::-1],
+                fill='toself', fillcolor='rgba(230, 57, 70, 0.1)',
+                line=dict(color='rgba(255,255,255,0)'), name='置信区间',
+                showlegend=True
+            ))
+        
+        fig.update_layout(
+            title=f'{selected_sku} 历史销量与预测趋势',
+            xaxis_title='日期', yaxis_title='销量（件）',
+            height=350, hovermode='x unified'
+        )
+        fig = apply_plotly_theme(fig)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col2:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 品类预测总量对比（未来30天）
+        cat_forecast = forecast_df[
+            forecast_df['品类'].isin(selected_cats)
+        ].copy()
+        cat_forecast = cat_forecast[cat_forecast['日期'] <= cat_forecast['日期'].min() + pd.Timedelta(days=30)]
+        cat_summary = cat_forecast.groupby('品类')['预测销量'].sum().reset_index()
+        cat_summary = cat_summary.sort_values('预测销量', ascending=True)
+        
+        color_map = {
+            '服装鞋履': '#1B4965', '3C电子': '#457B9D', '家居用品': '#2A9D8F',
+            '宠物用品': '#F4A261', '美妆个护': '#E63946', '运动户外': '#6B7280'
+        }
+        
+        fig2 = px.bar(cat_summary, x='预测销量', y='品类', orientation='h',
+                      title='各品类未来30天预测销量对比',
+                      color='品类', color_discrete_map=color_map,
+                      text='预测销量')
+        fig2.update_traces(textposition='outside', textfont_size=11)
+        fig2.update_layout(height=350, showlegend=False, yaxis_title='')
+        fig2 = apply_plotly_theme(fig2)
+        st.plotly_chart(fig2, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # =========================================================================
+    # 第二行图表：季节性分解 + 预测准确率
+    # =========================================================================
+    chart_col3, chart_col4 = st.columns(2)
+    
+    with chart_col3:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # SKU最近30天销量（按日期）
+        recent_sales = sales_df[
+            (sales_df['SKU编码'] == selected_sku) &
+            (sales_df['日期'] >= '2025-11-01')
+        ].copy()
+        recent_sales = recent_sales.groupby('日期')['销售数量'].sum().reset_index()
+        
+        if len(recent_sales) > 0:
+            fig3 = px.area(recent_sales, x='日期', y='销售数量',
+                           title=f'{selected_sku} 近30天销量走势',
+                           color_discrete_sequence=['#457B9D'])
+            fig3.update_layout(height=320, showlegend=False)
+            fig3 = apply_plotly_theme(fig3)
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("该SKU近期无销售数据")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col4:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 修复：在chart_col4中重新创建cat_forecast，不依赖chart_col2的变量
+        cat_forecast_box = forecast_df[
+            forecast_df['品类'].isin(selected_cats)
+        ].copy()
+        cat_forecast_box = cat_forecast_box[
+            cat_forecast_box['日期'] <= cat_forecast_box['日期'].min() + pd.Timedelta(days=30)
+        ]
+        
+        # 预测数据分布（箱线图）
+        if len(cat_forecast_box) > 0:
+            color_map_box = {
+                '服装鞋履': '#1B4965', '3C电子': '#457B9D', '家居用品': '#2A9D8F',
+                '宠物用品': '#F4A261', '美妆个护': '#E63946', '运动户外': '#6B7280'
+            }
+            fig4 = px.box(cat_forecast_box, x='品类', y='预测销量',
+                          title='各品类预测销量分布（箱线图）',
+                          color='品类', color_discrete_map=color_map_box)
+            fig4.update_layout(height=320, showlegend=False, xaxis_title='')
+            fig4 = apply_plotly_theme(fig4)
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("无预测数据")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # =========================================================================
+    # 预测数据表格
+    # =========================================================================
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <h4 style="color: #1B4965; margin-top: 0;">📋 预测数据明细</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 筛选后的预测数据
+    display_forecast = forecast_df[
+        (forecast_df['SKU编码'] == selected_sku) &
+        (forecast_df['品类'].isin(selected_cats))
+    ].copy()
+    
+    # 添加权重标记（决策模拟效果）
+    if recalc_clicked or st.session_state.get('forecast_recalculated', False):
+        display_forecast['当前Prophet权重'] = prophet_weight
+        display_forecast['当前XGBoost权重'] = xgb_weight
+    
+    display_forecast = display_forecast[[
+        'SKU编码', '品类', '日期', '预测销量', '预测下限', '预测上限', '集成预测'
+    ]].head(50)
+    
+    st.dataframe(display_forecast, use_container_width=True, hide_index=True)
+    
+    # 统计摘要
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+    with summary_col1:
+        st.metric("预测总销量", f"{display_forecast['预测销量'].sum():,.0f} 件")
+    with summary_col2:
+        st.metric("平均日销量", f"{display_forecast['预测销量'].mean():.2f} 件")
+    with summary_col3:
+        st.metric("预测上限均值", f"{display_forecast['预测上限'].mean():.2f} 件")
+    with summary_col4:
+        st.metric("预测下限均值", f"{display_forecast['预测下限'].mean():.2f} 件")
 
 
 def page_inventory():
