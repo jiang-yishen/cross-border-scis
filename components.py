@@ -42,19 +42,33 @@ def apply_custom_css():
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* 侧边栏样式 */
+    /* 侧边栏样式 - 改为浅色背景，深色文字 */
     [data-testid="stSidebar"] {
-        background-color: #1B4965;
+        background-color: #F8FAFC;
+        border-right: 1px solid #E2E8F0;
     }
     [data-testid="stSidebar"] .css-1d391kg {
-        background-color: #1B4965;
+        background-color: #F8FAFC;
     }
     [data-testid="stSidebar"] .stRadio label {
-        color: white !important;
+        color: #334155 !important;
         font-size: 14px;
+        font-weight: 500;
     }
     [data-testid="stSidebar"] .stRadio > div {
         gap: 4px;
+    }
+    /* 侧边栏选中项高亮 */
+    [data-testid="stSidebar"] .stRadio > div[role="radiogroup"] > label[data-baseweb="radio"] > div:first-child {
+        background-color: #1B4965 !important;
+        border-color: #1B4965 !important;
+    }
+    /* 侧边栏标题文字 */
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #1B4965 !important;
+    }
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] div {
+        color: #64748B;
     }
     
     /* KPI卡片容器 */
@@ -266,14 +280,14 @@ def sidebar_navigation():
         st.markdown("""
         <div style="text-align: center; padding: 20px 0;">
             <div style="font-size: 28px; margin-bottom: 8px;">🌐</div>
-            <div style="font-size: 16px; font-weight: 700; color: white;">
+            <div style="font-size: 16px; font-weight: 700; color: #1B4965;">
                 跨境海外仓<br>供应链智能决策系统
             </div>
-            <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 4px;">
+            <div style="font-size: 11px; color: #64748B; margin-top: 4px;">
                 SC-Decision Engine v1.0
             </div>
         </div>
-        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 16px 0;">
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;">
         """, unsafe_allow_html=True)
         
         pages = [
@@ -289,8 +303,8 @@ def sidebar_navigation():
         selected = st.radio("导航", pages, label_visibility="collapsed")
         
         st.markdown("""
-        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 16px 0;">
-        <div style="font-size: 11px; color: rgba(255,255,255,0.5); text-align: center;">
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;">
+        <div style="font-size: 11px; color: #94A3B8; text-align: center;">
             © 2024 供应链计划项目<br>基于 Streamlit 构建
         </div>
         """, unsafe_allow_html=True)
