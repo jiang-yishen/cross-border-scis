@@ -14,7 +14,7 @@ import time
 # =============================================================================
 # 注意：将下面的路径替换为您的 PythonAnywhere 用户名和项目路径
 # 格式：/home/<您的用户名>/supply-chain
-PROJECT_PATH = '/home/supplychain/supply-chain'
+PROJECT_PATH = '/home/18943571672jys/supply-chain'
 if PROJECT_PATH not in sys.path:
     sys.path.insert(0, PROJECT_PATH)
 
