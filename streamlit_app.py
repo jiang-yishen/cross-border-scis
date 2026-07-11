@@ -1153,16 +1153,258 @@ def page_replenishment():
 
 
 def page_transfer():
-    """调拨建议 - Phase 3"""
+    """调拨建议 - 红预警仓→富余仓智能匹配与优先级排序"""
     page_header("调拨建议", "红预警仓→富余仓智能匹配与优先级排序")
-    st.info("🚧 此页面正在开发中（Phase 3）。将包含：调拨匹配、优先级排序、调拨参数调整等功能。")
     
+    # 加载数据
     transfer_df = load_transfer_recommendation()
-    if len(transfer_df) > 0:
-        st.write(f"当前调拨建议：{len(transfer_df)} 条")
-        st.dataframe(transfer_df, use_container_width=True)
+    sku_df = load_sku_master()
+    wh_df = load_warehouse_master()
+    
+    # =========================================================================
+    # 参数调整区（决策模拟）
+    # =========================================================================
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 调拨优先级模型（决策模拟）</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    
+    with col_p1:
+        priority_mode = st.selectbox(
+            "🎯 调拨优先级",
+            options=["综合优先（默认）", "距离优先", "成本优先", "库存匹配优先"],
+            index=0,
+            help="选择调拨方案排序的优先级维度"
+        )
+    
+    with col_p2:
+        min_score = st.slider(
+            "📊 最小综合评分",
+            min_value=0.0, max_value=1.0, value=0.1, step=0.05,
+            help="仅展示综合评分高于此阈值的调拨方案"
+        )
+    
+    with col_p3:
+        from_whs = sorted(transfer_df['出发仓库'].unique().tolist())
+        selected_from = st.multiselect(
+            "📤 出发仓库",
+            from_whs,
+            default=from_whs,
+            help="筛选特定出发仓库的调拨方案"
+        )
+    
+    with col_p4:
+        to_whs = sorted(transfer_df['目标仓库'].unique().tolist())
+        selected_to = st.multiselect(
+            "📥 目标仓库",
+            to_whs,
+            default=to_whs,
+            help="筛选特定目标仓库的调拨方案"
+        )
+    
+    # 应用筛选
+    filtered = transfer_df[
+        (transfer_df['综合评分'] >= min_score) &
+        (transfer_df['出发仓库'].isin(selected_from)) &
+        (transfer_df['目标仓库'].isin(selected_to))
+    ].copy()
+    
+    # 根据优先级模式重新排序
+    if priority_mode == "距离优先":
+        filtered = filtered.sort_values('距离评分', ascending=False)
+    elif priority_mode == "成本优先":
+        filtered = filtered.sort_values('成本评分', ascending=False)
+    elif priority_mode == "库存匹配优先":
+        filtered = filtered.sort_values('库存评分', ascending=False)
     else:
-        st.warning("当前无可行调拨方案")
+        filtered = filtered.sort_values('综合评分', ascending=False)
+    
+    # =========================================================================
+    # KPI卡片
+    # =========================================================================
+    total_plans = len(filtered)
+    total_transfer_qty = filtered['可调拨数量'].sum() if total_plans > 0 else 0
+    total_demand = filtered['需求数量'].sum() if total_plans > 0 else 0
+    avg_score = filtered['综合评分'].mean() if total_plans > 0 else 0
+    avg_cost = filtered['调拨单位成本'].mean() if total_plans > 0 else 0
+    
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    kpi_row([
+        {"label": "调拨方案数", "value": f"{total_plans:,}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "🚚", "border_color": "#1B4965"},
+        {"label": "可调拨总量", "value": f"{total_transfer_qty:,.0f}", 
+         "delta": f"满足率:{(total_transfer_qty/max(total_demand,1)*100):.0f}%", "delta_color": "up", 
+         "icon": "📦", "border_color": "#2A9D8F"},
+        {"label": "平均综合评分", "value": f"{avg_score:.3f}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "⭐", "border_color": "#F4A261"},
+        {"label": "平均单位成本", "value": f"${avg_cost:.2f}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "💰", "border_color": "#457B9D"},
+    ])
+    
+    # =========================================================================
+    # 图表区域
+    # =========================================================================
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    chart_col1, chart_col2 = st.columns(2)
+    
+    with chart_col1:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 调拨流向图（出发仓库 → 目标仓库）
+        flow_data = filtered.groupby(['出发仓库', '目标仓库']).agg({
+            '可调拨数量': 'sum',
+            '综合评分': 'mean'
+        }).reset_index()
+        flow_data['流向'] = flow_data['出发仓库'] + ' → ' + flow_data['目标仓库']
+        flow_data = flow_data.sort_values('可调拨数量', ascending=True).tail(15)
+        
+        if len(flow_data) > 0:
+            fig = px.bar(flow_data, x='可调拨数量', y='流向', orientation='h',
+                         title='TOP15 调拨流向（按数量）',
+                         color='综合评分', color_continuous_scale='Blues',
+                         text='可调拨数量')
+            fig.update_traces(textposition='outside', textfont_size=10)
+            fig.update_layout(height=400, showlegend=False, yaxis_title='')
+            fig = apply_plotly_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("当前无可行调拨方案")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col2:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 综合评分分布
+        if len(filtered) > 0:
+            score_bins = [0, 0.1, 0.2, 0.3, 0.5, 1.0]
+            score_labels = ['0-0.1', '0.1-0.2', '0.2-0.3', '0.3-0.5', '>0.5']
+            filtered['评分区间'] = pd.cut(filtered['综合评分'], bins=score_bins, labels=score_labels, right=False)
+            score_dist = filtered.groupby('评分区间', observed=False).size().reset_index(name='方案数')
+            score_dist = score_dist.dropna(subset=['评分区间'])
+            
+            fig2 = px.bar(score_dist, x='评分区间', y='方案数',
+                          title='调拨方案综合评分分布',
+                          color='方案数', color_continuous_scale='Greens',
+                          text='方案数')
+            fig2.update_traces(textposition='outside')
+            fig2.update_layout(height=400, showlegend=False, xaxis_title='综合评分区间', yaxis_title='')
+            fig2 = apply_plotly_theme(fig2)
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("无调拨数据")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 第二行图表
+    chart_col3, chart_col4 = st.columns(2)
+    
+    with chart_col3:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 距离 vs 成本散点图（气泡大小=可调拨数量）
+        if len(filtered) > 0:
+            fig3 = px.scatter(filtered, x='距离km', y='调拨单位成本',
+                              size='可调拨数量', color='综合评分',
+                              color_continuous_scale='RdYlGn',
+                              title='距离 vs 成本 vs 数量（气泡大小=数量）',
+                              hover_data=['SKU编码', '出发仓库', '目标仓库', '需求数量'])
+            fig3.update_layout(height=360, xaxis_title='距离（km）', yaxis_title='单位成本（$）')
+            fig3 = apply_plotly_theme(fig3)
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("无调拨数据")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col4:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 出发仓库→目标仓库 调拨数量热力图
+        heatmap_data = filtered.groupby(['出发仓库', '目标仓库'])['可调拨数量'].sum().reset_index()
+        if len(heatmap_data) > 0:
+            heatmap_pivot = heatmap_data.pivot(index='出发仓库', columns='目标仓库', values='可调拨数量').fillna(0)
+            
+            fig4 = go.Figure(data=go.Heatmap(
+                z=heatmap_pivot.values,
+                x=heatmap_pivot.columns.tolist(),
+                y=heatmap_pivot.index.tolist(),
+                colorscale=[[0, '#E8F4F8'], [0.5, '#457B9D'], [1, '#1B4965']],
+                showscale=True,
+                colorbar=dict(title="数量", thickness=15),
+                text=heatmap_pivot.values,
+                texttemplate="%{text:.0f}",
+                textfont_size=10
+            ))
+            fig4.update_layout(title='调拨数量热力图（出发→目标）', 
+                               xaxis_title='目标仓库', yaxis_title='出发仓库',
+                               height=360)
+            fig4 = apply_plotly_theme(fig4)
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("无调拨数据")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # =========================================================================
+    # 调拨建议明细表
+    # =========================================================================
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <h4 style="color: #1B4965; margin-top: 0;">📋 调拨建议明细（按优先级排序）</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    display_cols = ['出发仓库', '目标仓库', 'SKU编码', '距离km', '调拨单位成本',
+                    '可调拨数量', '需求数量', '距离评分', '成本评分', '库存评分', '综合评分']
+    
+    if len(filtered) > 0:
+        st.dataframe(filtered[display_cols], use_container_width=True, hide_index=True)
+        
+        # 统计摘要
+        st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+        
+        sum_col1, sum_col2, sum_col3, sum_col4 = st.columns(4)
+        with sum_col1:
+            st.metric("总调拨距离", f"{filtered['距离km'].sum():,.0f} km")
+        with sum_col2:
+            st.metric("预计总成本", f"${(filtered['调拨单位成本'] * filtered['可调拨数量']).sum():,.2f}")
+        with sum_col3:
+            st.metric("平均距离", f"{filtered['距离km'].mean():.0f} km")
+        with sum_col4:
+            st.metric("最大综合评分", f"{filtered['综合评分'].max():.3f}")
+    else:
+        st.warning("⚠️ 当前筛选条件下无可行调拨方案，请放宽筛选条件")
+    
+    # =========================================================================
+    # 决策模拟效果说明
+    # =========================================================================
+    st.markdown("""
+    <div style="background: #F0F9FF; border-radius: 8px; padding: 16px; margin-top: 24px;
+                border-left: 4px solid #1B4965;">
+        <h5 style="color: #1B4965; margin-top: 0;">📊 调拨优先级模型说明</h5>
+        <p style="color: #374151; font-size: 13px; margin-bottom: 8px;">
+            综合评分 = 距离评分(30%) + 成本评分(35%) + 库存匹配评分(35%)
+        </p>
+        <ul style="color: #374151; font-size: 13px; margin-bottom: 0;">
+            <li><b>距离优先</b>：优先选择距离近的仓库对，降低运输时效风险</li>
+            <li><b>成本优先</b>：优先选择单位调拨成本低的方案，降低物流成本</li>
+            <li><b>库存匹配优先</b>：优先选择可调拨数量与需求数量匹配度高的方案</li>
+            <li><b>综合优先</b>：平衡距离、成本、库存三个维度的加权得分</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def page_logistics():
