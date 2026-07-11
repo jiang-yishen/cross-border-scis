@@ -308,8 +308,8 @@ def page_forecast():
         selected_cats = st.multiselect(
             "🏷️ 筛选品类",
             categories,
-            default=categories,
-            help="选择要展示的品类"
+            default=[],
+            help="选择要展示的品类（空白=展示全部）"
         )
     
     with col_param3:
@@ -406,9 +406,10 @@ def page_forecast():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 品类预测总量对比（未来30天）
-        cat_forecast = forecast_df[
-            forecast_df['品类'].isin(selected_cats)
-        ].copy()
+        if selected_cats:
+            cat_forecast = forecast_df[forecast_df['品类'].isin(selected_cats)].copy()
+        else:
+            cat_forecast = forecast_df.copy()
         cat_forecast = cat_forecast[cat_forecast['日期'] <= cat_forecast['日期'].min() + pd.Timedelta(days=30)]
         cat_summary = cat_forecast.groupby('品类')['预测销量'].sum().reset_index()
         cat_summary = cat_summary.sort_values('预测销量', ascending=True)
@@ -459,9 +460,10 @@ def page_forecast():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 修复：在chart_col4中重新创建cat_forecast，不依赖chart_col2的变量
-        cat_forecast_box = forecast_df[
-            forecast_df['品类'].isin(selected_cats)
-        ].copy()
+        if selected_cats:
+            cat_forecast_box = forecast_df[forecast_df['品类'].isin(selected_cats)].copy()
+        else:
+            cat_forecast_box = forecast_df.copy()
         cat_forecast_box = cat_forecast_box[
             cat_forecast_box['日期'] <= cat_forecast_box['日期'].min() + pd.Timedelta(days=30)
         ]
@@ -496,10 +498,15 @@ def page_forecast():
     """, unsafe_allow_html=True)
     
     # 筛选后的预测数据
-    display_forecast = forecast_df[
-        (forecast_df['SKU编码'] == selected_sku) &
-        (forecast_df['品类'].isin(selected_cats))
-    ].copy()
+    if selected_cats:
+        display_forecast = forecast_df[
+            (forecast_df['SKU编码'] == selected_sku) &
+            (forecast_df['品类'].isin(selected_cats))
+        ].copy()
+    else:
+        display_forecast = forecast_df[
+            forecast_df['SKU编码'] == selected_sku
+        ].copy()
     
     # 添加权重标记（决策模拟效果）
     if recalc_clicked or st.session_state.get('forecast_recalculated', False):
@@ -579,8 +586,8 @@ def page_inventory():
         selected_cats = st.multiselect(
             "🏷️ 筛选品类",
             categories,
-            default=categories[:3],
-            help="选择要分析的品类"
+            default=[],
+            help="选择要分析的品类（空白=展示全部）"
         )
     
     with col_p4:
@@ -608,7 +615,10 @@ def page_inventory():
     # =========================================================================
     # KPI卡片
     # =========================================================================
-    filtered = rep_df[rep_df['品类'].isin(selected_cats)].copy()
+    if selected_cats:
+        filtered = rep_df[rep_df['品类'].isin(selected_cats)].copy()
+    else:
+        filtered = rep_df.copy()
     if alert_filter != '全部':
         filtered = filtered[filtered['库存预警'].str.contains(alert_filter.replace('预警', ''))]
     
@@ -832,8 +842,8 @@ def page_replenishment():
         selected_cats = st.multiselect(
             "🏷️ 筛选品类",
             categories,
-            default=categories[:3],
-            help="选择要分析的品类"
+            default=[],
+            help="选择要分析的品类（空白=展示全部）"
         )
     
     with col_p4:
@@ -842,8 +852,8 @@ def page_replenishment():
         selected_whs = st.multiselect(
             "🏭 筛选仓库",
             warehouses,
-            default=warehouses[:3],
-            help="选择要分析的仓库"
+            default=[],
+            help="选择要分析的仓库（空白=展示全部）"
         )
     
     # 重新计算按钮
@@ -861,10 +871,17 @@ def page_replenishment():
     # =========================================================================
     # 筛选数据
     # =========================================================================
-    filtered = rep_df[
-        (rep_df['品类'].isin(selected_cats)) & 
-        (rep_df['仓库名称'].isin(selected_whs))
-    ].copy()
+    if selected_cats and selected_whs:
+        filtered = rep_df[
+            (rep_df['品类'].isin(selected_cats)) & 
+            (rep_df['仓库名称'].isin(selected_whs))
+        ].copy()
+    elif selected_cats:
+        filtered = rep_df[rep_df['品类'].isin(selected_cats)].copy()
+    elif selected_whs:
+        filtered = rep_df[rep_df['仓库名称'].isin(selected_whs)].copy()
+    else:
+        filtered = rep_df.copy()
     
     # 模拟重新计算：基于新的Z值和提前期调整，重新计算安全库存和ROP
     if recalc_rep:
@@ -1193,8 +1210,8 @@ def page_transfer():
         selected_from = st.multiselect(
             "📤 出发仓库",
             from_whs,
-            default=from_whs,
-            help="筛选特定出发仓库的调拨方案"
+            default=[],
+            help="筛选特定出发仓库的调拨方案（空白=展示全部）"
         )
     
     with col_p4:
@@ -1202,16 +1219,29 @@ def page_transfer():
         selected_to = st.multiselect(
             "📥 目标仓库",
             to_whs,
-            default=to_whs,
-            help="筛选特定目标仓库的调拨方案"
+            default=[],
+            help="筛选特定目标仓库的调拨方案（空白=展示全部）"
         )
     
     # 应用筛选
-    filtered = transfer_df[
-        (transfer_df['综合评分'] >= min_score) &
-        (transfer_df['出发仓库'].isin(selected_from)) &
-        (transfer_df['目标仓库'].isin(selected_to))
-    ].copy()
+    if selected_from and selected_to:
+        filtered = transfer_df[
+            (transfer_df['综合评分'] >= min_score) &
+            (transfer_df['出发仓库'].isin(selected_from)) &
+            (transfer_df['目标仓库'].isin(selected_to))
+        ].copy()
+    elif selected_from:
+        filtered = transfer_df[
+            (transfer_df['综合评分'] >= min_score) &
+            (transfer_df['出发仓库'].isin(selected_from))
+        ].copy()
+    elif selected_to:
+        filtered = transfer_df[
+            (transfer_df['综合评分'] >= min_score) &
+            (transfer_df['目标仓库'].isin(selected_to))
+        ].copy()
+    else:
+        filtered = transfer_df[transfer_df['综合评分'] >= min_score].copy()
     
     # 根据优先级模式重新排序
     if priority_mode == "距离优先":
@@ -1434,8 +1464,8 @@ def page_logistics():
         selected_status = st.multiselect(
             "📋 订单状态",
             order_statuses,
-            default=order_statuses,
-            help="选择要查看的订单状态"
+            default=[],
+            help="选择要查看的订单状态（空白=展示全部）"
         )
     
     with col_f2:
@@ -1443,8 +1473,8 @@ def page_logistics():
         selected_log_status = st.multiselect(
             "🚢 物流状态",
             log_statuses,
-            default=log_statuses,
-            help="选择要查看的物流状态"
+            default=[],
+            help="选择要查看的物流状态（空白=展示全部）"
         )
     
     with col_f3:
@@ -1452,8 +1482,8 @@ def page_logistics():
         selected_suppliers = st.multiselect(
             "🏭 供应商",
             suppliers,
-            default=suppliers[:5],
-            help="选择供应商"
+            default=[],
+            help="选择供应商（空白=展示全部）"
         )
     
     with col_f4:
@@ -1461,21 +1491,35 @@ def page_logistics():
         selected_carriers = st.multiselect(
             "🚚 承运商",
             carriers,
-            default=carriers[:3],
-            help="选择承运商"
+            default=[],
+            help="选择承运商（空白=展示全部）"
         )
     
     # 筛选采购订单
-    filtered_po = po_df[
-        (po_df['订单状态'].isin(selected_status)) &
-        (po_df['供应商ID'].isin(selected_suppliers))
-    ].copy()
+    if selected_status and selected_suppliers:
+        filtered_po = po_df[
+            (po_df['订单状态'].isin(selected_status)) &
+            (po_df['供应商ID'].isin(selected_suppliers))
+        ].copy()
+    elif selected_status:
+        filtered_po = po_df[po_df['订单状态'].isin(selected_status)].copy()
+    elif selected_suppliers:
+        filtered_po = po_df[po_df['供应商ID'].isin(selected_suppliers)].copy()
+    else:
+        filtered_po = po_df.copy()
     
     # 筛选物流记录
-    filtered_log = log_df[
-        (log_df['物流状态'].isin(selected_log_status)) &
-        (log_df['承运商'].isin(selected_carriers))
-    ].copy()
+    if selected_log_status and selected_carriers:
+        filtered_log = log_df[
+            (log_df['物流状态'].isin(selected_log_status)) &
+            (log_df['承运商'].isin(selected_carriers))
+        ].copy()
+    elif selected_log_status:
+        filtered_log = log_df[log_df['物流状态'].isin(selected_log_status)].copy()
+    elif selected_carriers:
+        filtered_log = log_df[log_df['承运商'].isin(selected_carriers)].copy()
+    else:
+        filtered_log = log_df.copy()
     
     # 合并（物流记录中有订单ID匹配的）
     merged = filtered_po.merge(
