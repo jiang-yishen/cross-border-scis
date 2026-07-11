@@ -196,8 +196,8 @@ def apply_plotly_theme(fig: go.Figure) -> go.Figure:
             orientation="v",
             yanchor="top",
             y=0.99,
-            xanchor="left",
-            x=0.01,
+            xanchor="right",
+            x=0.99,
             bgcolor="rgba(255,255,255,0.85)",
             bordercolor="#E5E7EB",
             borderwidth=1
