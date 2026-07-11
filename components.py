@@ -189,15 +189,18 @@ def apply_plotly_theme(fig: go.Figure) -> go.Figure:
         font=dict(family="Arial, sans-serif", color="#374151"),
         paper_bgcolor="white",
         plot_bgcolor="white",
-        margin=dict(l=40, r=40, t=60, b=40),
+        margin=dict(l=40, r=40, t=80, b=40),
         title_font=dict(size=16, color="#1B4965"),
+        title=dict(x=0.02, xanchor='left'),
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            bgcolor="rgba(255,255,255,0.8)"
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="#E5E7EB",
+            borderwidth=1
         ),
     )
     fig.update_xaxes(
