@@ -147,23 +147,20 @@ def kpi_card(label: str, value: str, delta: str = None, delta_color: str = "norm
         icon: 图标emoji
         border_color: 左侧边框颜色
     """
-    delta_html = ""
     if delta:
-        color_class = delta_color
-        delta_html = f'<span class="kpi-delta {color_class}">{delta}</span>'
+        delta_html = f'<span class="kpi-delta {delta_color}">{delta}</span>'
+        bottom_html = f'<span class="kpi-value" style="color: {border_color};">{value}</span>{delta_html}'
+    else:
+        bottom_html = f'<span class="kpi-value" style="color: {border_color};">{value}</span>'
     
-    st.markdown(f"""
-    <div class="kpi-container" style="border-left-color: {border_color};">
-        <div>
-            <span style="font-size: 16px; margin-right: 6px;">{icon}</span>
-            <span class="kpi-label">{label}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-            <span class="kpi-value" style="color: {border_color};">{value}</span>
-            {delta_html}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="kpi-container" style="border-left-color: {border_color};">'
+        f'<div><span style="font-size: 16px; margin-right: 6px;">{icon}</span>'
+        f'<span class="kpi-label">{label}</span></div>'
+        f'<div style="display: flex; justify-content: space-between; align-items: flex-end;">{bottom_html}</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
 
 def kpi_row(cards: list):
