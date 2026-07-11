@@ -1408,13 +1408,297 @@ def page_transfer():
 
 
 def page_logistics():
-    """采购物流跟踪 - Phase 3"""
-    page_header("采购物流跟踪", "采购订单状态看板与物流时间线")
-    st.info("🚧 此页面正在开发中（Phase 3）。将包含：采购订单状态、物流时间线、到货预测等功能。")
+    """采购物流跟踪 - 采购订单状态看板与物流时间线"""
+    page_header("采购物流跟踪", "采购订单状态监控、物流时间线追踪与到货预测")
     
+    # 加载数据
     po_df = load_purchase_orders()
-    st.write(f"当前采购订单：{len(po_df):,} 条")
-    st.dataframe(po_df.head(20), use_container_width=True)
+    log_df = load_logistics_tracking()
+    sku_df = load_sku_master()
+    wh_df = load_warehouse_master()
+    
+    # =========================================================================
+    # 参数筛选区
+    # =========================================================================
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+        <h4 style="color: #1B4965; margin-top: 0;">🔍 筛选条件</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    
+    with col_f1:
+        order_statuses = sorted(po_df['订单状态'].unique().tolist())
+        selected_status = st.multiselect(
+            "📋 订单状态",
+            order_statuses,
+            default=order_statuses,
+            help="选择要查看的订单状态"
+        )
+    
+    with col_f2:
+        log_statuses = sorted(log_df['物流状态'].unique().tolist())
+        selected_log_status = st.multiselect(
+            "🚢 物流状态",
+            log_statuses,
+            default=log_statuses,
+            help="选择要查看的物流状态"
+        )
+    
+    with col_f3:
+        suppliers = sorted(po_df['供应商ID'].unique().tolist())
+        selected_suppliers = st.multiselect(
+            "🏭 供应商",
+            suppliers,
+            default=suppliers[:5],
+            help="选择供应商"
+        )
+    
+    with col_f4:
+        carriers = sorted(log_df['承运商'].unique().tolist())
+        selected_carriers = st.multiselect(
+            "🚚 承运商",
+            carriers,
+            default=carriers[:3],
+            help="选择承运商"
+        )
+    
+    # 筛选采购订单
+    filtered_po = po_df[
+        (po_df['订单状态'].isin(selected_status)) &
+        (po_df['供应商ID'].isin(selected_suppliers))
+    ].copy()
+    
+    # 筛选物流记录
+    filtered_log = log_df[
+        (log_df['物流状态'].isin(selected_log_status)) &
+        (log_df['承运商'].isin(selected_carriers))
+    ].copy()
+    
+    # 合并（物流记录中有订单ID匹配的）
+    merged = filtered_po.merge(
+        filtered_log, 
+        on=['采购订单ID', 'SKU编码', '仓库ID'], 
+        how='left'
+    )
+    
+    # =========================================================================
+    # KPI卡片
+    # =========================================================================
+    total_po = len(filtered_po)
+    total_qty = filtered_po['订购数量'].sum()
+    total_cost = (filtered_po['订购数量'] * filtered_po['单位成本']).sum()
+    in_transit = len(filtered_po[filtered_po['订单状态'] == '在途'])
+    completed = len(filtered_po[filtered_po['订单状态'] == '已完成'])
+    
+    # 计算平均运输时效（有实际到达日期的）
+    delivered = merged[merged['实际到达日期'].notna()].copy()
+    if len(delivered) > 0:
+        delivered['运输天数'] = (delivered['实际到达日期'] - delivered['发货日期']).dt.days
+        avg_transit = delivered['运输天数'].mean()
+    else:
+        avg_transit = 0
+    
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    kpi_row([
+        {"label": "采购订单总数", "value": f"{total_po:,}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "📋", "border_color": "#1B4965"},
+        {"label": "采购总数量", "value": f"{total_qty:,.0f}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "📦", "border_color": "#457B9D"},
+        {"label": "采购总金额", "value": f"${total_cost/10000:.1f}万", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "💰", "border_color": "#2A9D8F"},
+        {"label": "在途订单", "value": f"{in_transit:,}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "🚢", "border_color": "#F4A261"},
+        {"label": "已完成订单", "value": f"{completed:,}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "✅", "border_color": "#1B4965"},
+    ])
+    
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    kpi_row([
+        {"label": "平均运输时效", "value": f"{avg_transit:.0f}天", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "⏱️", "border_color": "#457B9D"},
+        {"label": "在途物流单", "value": f"{len(filtered_log):,}", 
+         "delta": None, "delta_color": "normal", 
+         "icon": "🚚", "border_color": "#E63946"},
+    ])
+    
+    # =========================================================================
+    # 图表区域
+    # =========================================================================
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    chart_col1, chart_col2 = st.columns(2)
+    
+    with chart_col1:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 订单状态分布（饼图）
+        status_dist = filtered_po.groupby('订单状态').size().reset_index(name='订单数')
+        status_colors = {
+            '已完成': '#2A9D8F',
+            '在途': '#F4A261',
+            '待发货': '#457B9D',
+            '已下单': '#1B4965'
+        }
+        fig = px.pie(status_dist, names='订单状态', values='订单数',
+                     title='采购订单状态分布',
+                     color='订单状态', color_discrete_map=status_colors)
+        fig.update_traces(textinfo='percent+label', textfont_size=12)
+        fig.update_layout(height=350)
+        fig = apply_plotly_theme(fig)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col2:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 物流状态分布（饼图）
+        log_status_dist = filtered_log.groupby('物流状态').size().reset_index(name='物流单数')
+        log_status_colors = {
+            '已入库': '#2A9D8F',
+            '已到达目的港': '#457B9D',
+            '运输中': '#F4A261',
+            '清关中': '#1B4965'
+        }
+        fig2 = px.pie(log_status_dist, names='物流状态', values='物流单数',
+                      title='物流状态分布',
+                      color='物流状态', color_discrete_map=log_status_colors)
+        fig2.update_traces(textinfo='percent+label', textfont_size=12)
+        fig2.update_layout(height=350)
+        fig2 = apply_plotly_theme(fig2)
+        st.plotly_chart(fig2, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 第二行图表
+    chart_col3, chart_col4 = st.columns(2)
+    
+    with chart_col3:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 承运商订单量
+        carrier_dist = filtered_log.groupby('承运商').size().reset_index(name='物流单数')
+        carrier_dist = carrier_dist.sort_values('物流单数', ascending=True)
+        
+        fig3 = px.bar(carrier_dist, x='物流单数', y='承运商', orientation='h',
+                      title='各承运商物流单数',
+                      color='物流单数', color_continuous_scale='Blues',
+                      text='物流单数')
+        fig3.update_traces(textposition='outside', textfont_size=11)
+        fig3.update_layout(height=350, showlegend=False, yaxis_title='')
+        fig3 = apply_plotly_theme(fig3)
+        st.plotly_chart(fig3, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with chart_col4:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        
+        # 月度采购趋势
+        filtered_po['月份'] = filtered_po['下单日期'].dt.strftime('%Y-%m')
+        monthly = filtered_po.groupby('月份').agg({
+            '订购数量': 'sum',
+            '采购订单ID': 'nunique'
+        }).reset_index()
+        monthly.columns = ['月份', '采购数量', '订单数']
+        monthly = monthly.sort_values('月份')
+        
+        fig4 = go.Figure()
+        fig4.add_trace(go.Bar(
+            x=monthly['月份'], y=monthly['采购数量'],
+            name='采购数量', marker_color='#457B9D'
+        ))
+        fig4.add_trace(go.Scatter(
+            x=monthly['月份'], y=monthly['订单数'],
+            name='订单数', mode='lines+markers', marker_color='#E63946',
+            yaxis='y2'
+        ))
+        fig4.update_layout(
+            title='月度采购趋势',
+            yaxis=dict(title='采购数量', titlefont_color='#457B9D'),
+            yaxis2=dict(title='订单数', titlefont_color='#E63946', overlaying='y', side='right'),
+            height=350, barmode='group'
+        )
+        fig4 = apply_plotly_theme(fig4)
+        st.plotly_chart(fig4, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # =========================================================================
+    # 采购订单明细表
+    # =========================================================================
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <h4 style="color: #1B4965; margin-top: 0;">📋 采购订单明细</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 合并物流信息展示
+    display_cols = ['采购订单ID', 'SKU编码', '供应商ID', '仓库ID', '订单状态',
+                    '订购数量', '到货数量', '单位成本', '预计到货日期', '下单日期']
+    if '物流单号' in merged.columns:
+        display_cols.extend(['物流单号', '物流状态', '承运商', '发货日期'])
+    
+    display_df = merged[display_cols].copy()
+    display_df['采购金额'] = (display_df['订购数量'] * display_df['单位成本']).round(2)
+    display_df = display_df.sort_values('下单日期', ascending=False)
+    
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    
+    # 统计
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    sum_col1, sum_col2, sum_col3 = st.columns(3)
+    with sum_col1:
+        st.metric("平均到货率", f"{(filtered_po['到货数量'].sum()/filtered_po['订购数量'].sum()*100):.1f}%")
+    with sum_col2:
+        st.metric("平均单件成本", f"${(total_cost/total_qty if total_qty>0 else 0):.2f}")
+    with sum_col3:
+        overdue = filtered_po[filtered_po['预计到货日期'] < pd.Timestamp('2025-12-31')]
+        st.metric("预计超期订单", f"{len(overdue)} 条")
+    
+    # =========================================================================
+    # 物流时间线模拟
+    # =========================================================================
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background: white; border-radius: 12px; padding: 20px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <h4 style="color: #1B4965; margin-top: 0;">🚢 物流状态时间线</h4>
+        <p style="color: #6B7280; font-size: 13px; margin-bottom: 16px;">
+            各物流状态阶段的订单数量分布与平均停留时间
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 物流状态漏斗图
+    log_status_order = ['已入库', '已到达目的港', '清关中', '运输中']
+    funnel_data = filtered_log.groupby('物流状态').size().reset_index(name='物流单数')
+    funnel_data['排序'] = funnel_data['物流状态'].apply(
+        lambda x: log_status_order.index(x) if x in log_status_order else 99
+    )
+    funnel_data = funnel_data.sort_values('排序')
+    
+    fig5 = go.Figure(go.Funnel(
+        y=funnel_data['物流状态'],
+        x=funnel_data['物流单数'],
+        textposition='inside',
+        textinfo='value+percent initial',
+        marker=dict(color=['#2A9D8F', '#457B9D', '#F4A261', '#1B4965']),
+        connector=dict(line=dict(color='#E5E7EB', width=2))
+    ))
+    fig5.update_layout(title='物流状态漏斗（从运输中到已入库）', height=400)
+    fig5 = apply_plotly_theme(fig5)
+    st.plotly_chart(fig5, use_container_width=True)
 
 
 # =============================================================================
