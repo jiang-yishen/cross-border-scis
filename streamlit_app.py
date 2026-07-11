@@ -648,9 +648,9 @@ def page_inventory():
         fig = px.scatter(abc_xyz_data, x='ABC分类', y='XYZ分类', size='SKU数量',
                          color='SKU数量', color_continuous_scale='Blues',
                          title='ABC-XYZ 分类矩阵',
-                         size_max=50, text='SKU数量')
-        fig.update_traces(textposition='top center', textfont_size=12)
-        fig.update_layout(height=350, xaxis_title='ABC分类（价值贡献）', 
+                         size_max=45)
+        fig.update_traces(marker=dict(line=dict(width=1, color='white')))
+        fig.update_layout(height=380, xaxis_title='ABC分类（价值贡献）', 
                           yaxis_title='XYZ分类（需求波动）')
         fig = apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
@@ -691,8 +691,9 @@ def page_inventory():
                       title='库龄分布（按SKU数）',
                       color='SKU数量', color_continuous_scale='Reds',
                       text='SKU数量')
-        fig3.update_traces(textposition='outside')
-        fig3.update_layout(height=320, showlegend=False, xaxis_title='库龄区间', yaxis_title='')
+        fig3.update_traces(textposition='outside', textfont_size=11)
+        fig3.update_layout(height=360, showlegend=False, xaxis_title='库龄区间', yaxis_title='',
+                           margin=dict(b=60))
         fig3 = apply_plotly_theme(fig3)
         st.plotly_chart(fig3, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -711,8 +712,9 @@ def page_inventory():
                       title='ABC分类 × 库存预警分布',
                       color_discrete_map=alert_colors, barmode='group',
                       text='数量')
-        fig4.update_traces(textposition='outside')
-        fig4.update_layout(height=320, xaxis_title='', yaxis_title='')
+        fig4.update_traces(textposition='outside', textfont_size=11)
+        fig4.update_layout(height=360, xaxis_title='', yaxis_title='',
+                           margin=dict(b=60))
         fig4 = apply_plotly_theme(fig4)
         st.plotly_chart(fig4, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -936,22 +938,23 @@ def page_replenishment():
         fig.add_trace(go.Bar(
             x=abc_summary['ABC分类'], y=abc_summary['可用数量'],
             name='当前可用库存', marker_color='#457B9D',
-            text=abc_summary['可用数量'], textposition='outside'
+            text=abc_summary['可用数量'], textposition='inside', textfont_size=11
         ))
         fig.add_trace(go.Bar(
             x=abc_summary['ABC分类'], y=abc_summary['模拟安全库存'],
             name='安全库存线', marker_color='#F4A261',
-            text=abc_summary['模拟安全库存'], textposition='outside'
+            text=abc_summary['模拟安全库存'], textposition='inside', textfont_size=11
         ))
         fig.add_trace(go.Bar(
             x=abc_summary['ABC分类'], y=abc_summary['模拟再订货点'],
             name='再订货点(ROP)', marker_color='#E63946',
-            text=abc_summary['模拟再订货点'], textposition='outside'
+            text=abc_summary['模拟再订货点'], textposition='inside', textfont_size=11
         ))
         fig.update_layout(
             title='安全库存水位对比（按ABC分类）',
-            barmode='group', height=350,
-            xaxis_title='ABC分类', yaxis_title='数量（件）'
+            barmode='group', height=400,
+            xaxis_title='ABC分类', yaxis_title='数量（件）',
+            margin=dict(t=80)
         )
         fig = apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
@@ -980,8 +983,9 @@ def page_replenishment():
             ))
             fig2.update_layout(
                 title='EOQ建议 vs 最小起订量 vs 当前库存（ROP触发SKU）',
-                height=350, xaxis_title='SKU', yaxis_title='数量（件）',
-                xaxis_tickangle=-45
+                height=400, xaxis_title='SKU', yaxis_title='数量（件）',
+                xaxis_tickangle=-45,
+                margin=dict(b=80)
             )
             fig2 = apply_plotly_theme(fig2)
             st.plotly_chart(fig2, use_container_width=True)
@@ -1003,8 +1007,9 @@ def page_replenishment():
                           title='各仓库ROP触发SKU数',
                           color='ROP触发数', color_continuous_scale='Reds',
                           text='ROP触发数')
-            fig3.update_traces(textposition='outside')
-            fig3.update_layout(height=320, showlegend=False, xaxis_title='', yaxis_title='')
+            fig3.update_traces(textposition='outside', textfont_size=11)
+            fig3.update_layout(height=360, showlegend=False, xaxis_title='', yaxis_title='',
+                               margin=dict(b=60))
             fig3 = apply_plotly_theme(fig3)
             st.plotly_chart(fig3, use_container_width=True)
         else:
@@ -1031,8 +1036,9 @@ def page_replenishment():
                           title='预计缺货天数分布',
                           color='缺货区间', color_discrete_map=alert_colors,
                           text='SKU数量')
-            fig4.update_traces(textposition='outside')
-            fig4.update_layout(height=320, showlegend=False, xaxis_title='', yaxis_title='')
+            fig4.update_traces(textposition='outside', textfont_size=11)
+            fig4.update_layout(height=360, showlegend=False, xaxis_title='', yaxis_title='',
+                               margin=dict(b=60))
             fig4 = apply_plotly_theme(fig4)
             st.plotly_chart(fig4, use_container_width=True)
         else:
@@ -1139,6 +1145,8 @@ def page_replenishment():
     
     st.dataframe(eoq_display.sort_values('预计采购金额', ascending=False), 
                  use_container_width=True, hide_index=True)
+    
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
     
     total_replenish_cost = eoq_display['预计采购金额'].sum()
     st.metric("本次补货预计总采购金额", f"${total_replenish_cost:,.2f}")
