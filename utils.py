@@ -3,6 +3,7 @@
 ============================================
 统一封装所有数据文件的读取，处理中文表头，提供缓存。
 优化：SQLite 数据库替代 CSV（云端内存友好，按需查询）
+关键修复：SQLite 读取后强制转换正确的数据类型
 """
 import os
 import json
@@ -20,7 +21,7 @@ USE_SQLITE = os.path.exists(DB_PATH)
 
 
 def _get_conn():
-    """获取 SQLite 连接（复用连接对象）"""
+    """获取 SQLite 连接"""
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
@@ -39,12 +40,11 @@ def load_home_cache():
 
 
 # =============================================================================
-# SQLite 查询函数（云端优先）
+# SQLite 查询函数（云端优先）- 强制类型转换修复
 # =============================================================================
 
 @st.cache_data
 def load_warehouse_master_sql():
-    """仓库主数据 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM warehouse_master", conn)
     conn.close()
@@ -53,17 +53,20 @@ def load_warehouse_master_sql():
 
 @st.cache_data
 def load_sku_master_sql():
-    """SKU主数据 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM sku_master", conn)
     conn.close()
     df['上市日期'] = pd.to_datetime(df['上市日期'])
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['品类'] = df['品类'].astype(str)
+    df['单价'] = pd.to_numeric(df['单价'], errors='coerce')
     return df
 
 
 @st.cache_data
 def load_sales_daily_sql(sku_id=None, days=60):
-    """日销售数据 - SQLite（按需查询，只加载需要的 SKU 和天数）"""
+    """日销售数据 - 按需查询，只加载需要的 SKU 和天数"""
     conn = _get_conn()
     if sku_id:
         df = pd.read_sql_query(
@@ -74,72 +77,118 @@ def load_sales_daily_sql(sku_id=None, days=60):
         df = pd.read_sql_query("SELECT * FROM sales_daily", conn)
     conn.close()
     df['日期'] = pd.to_datetime(df['日期'])
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['仓库ID'] = df['仓库ID'].astype(str)
+    df['销售数量'] = pd.to_numeric(df['销售数量'], errors='coerce').fillna(0).astype(int)
     return df
 
 
 @st.cache_data
 def load_purchase_orders_sql():
-    """采购订单 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM purchase_orders", conn)
     conn.close()
     df['下单日期'] = pd.to_datetime(df['下单日期'])
     df['预计到货日期'] = pd.to_datetime(df['预计到货日期'])
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['仓库ID'] = df['仓库ID'].astype(str)
+    df['采购数量'] = pd.to_numeric(df['采购数量'], errors='coerce').fillna(0).astype(int)
+    df['采购单价'] = pd.to_numeric(df['采购单价'], errors='coerce')
     return df
 
 
 @st.cache_data
 def load_logistics_tracking_sql():
-    """物流跟踪 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM logistics_tracking", conn)
     conn.close()
     df['发货日期'] = pd.to_datetime(df['发货日期'])
     df['预计到达日期'] = pd.to_datetime(df['预计到达日期'])
     df['实际到达日期'] = pd.to_datetime(df['实际到达日期'])
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['仓库ID'] = df['仓库ID'].astype(str)
+    df['发货数量'] = pd.to_numeric(df['发货数量'], errors='coerce').fillna(0).astype(int)
     return df
 
 
 @st.cache_data
 def load_inventory_snapshot_sql():
-    """库存快照 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM inventory_snapshot", conn)
     conn.close()
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['仓库ID'] = df['仓库ID'].astype(str)
+    df['总数量'] = pd.to_numeric(df['总数量'], errors='coerce').fillna(0).astype(int)
+    df['可用数量'] = pd.to_numeric(df['可用数量'], errors='coerce').fillna(0).astype(int)
+    df['在途数量'] = pd.to_numeric(df['在途数量'], errors='coerce').fillna(0).astype(int)
+    df['单价'] = pd.to_numeric(df['单价'], errors='coerce')
     return df
 
 
 @st.cache_data
 def load_demand_forecast_sql():
-    """需求预测结果 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM demand_forecast", conn)
     conn.close()
     df['日期'] = pd.to_datetime(df['日期'])
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['品类'] = df['品类'].astype(str)
+    df['预测销量'] = pd.to_numeric(df['预测销量'], errors='coerce').fillna(0)
+    df['预测下限'] = pd.to_numeric(df['预测下限'], errors='coerce').fillna(0)
+    df['预测上限'] = pd.to_numeric(df['预测上限'], errors='coerce').fillna(0)
+    df['集成预测'] = pd.to_numeric(df['集成预测'], errors='coerce').fillna(0)
     return df
 
 
 @st.cache_data
 def load_replenishment_plan_sql():
-    """补货计划 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM replenishment_plan", conn)
     conn.close()
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['品类'] = df['品类'].astype(str)
+    df['仓库ID'] = df['仓库ID'].astype(str)
+    df['仓库名称'] = df['仓库名称'].astype(str)
+    df['ABC分类'] = df['ABC分类'].astype(str)
+    df['XYZ分类'] = df['XYZ分类'].astype(str)
+    df['总数量'] = pd.to_numeric(df['总数量'], errors='coerce').fillna(0).astype(int)
+    df['可用数量'] = pd.to_numeric(df['可用数量'], errors='coerce').fillna(0).astype(int)
+    df['安全库存'] = pd.to_numeric(df['安全库存'], errors='coerce').fillna(0).astype(int)
+    df['再订货点'] = pd.to_numeric(df['再订货点'], errors='coerce').fillna(0).astype(int)
+    df['经济订货量'] = pd.to_numeric(df['经济订货量'], errors='coerce').fillna(0).astype(int)
+    df['最小起订量'] = pd.to_numeric(df['最小起订量'], errors='coerce').fillna(0).astype(int)
+    df['日均销量'] = pd.to_numeric(df['日均销量'], errors='coerce').fillna(0)
+    df['预计缺货天数'] = pd.to_numeric(df['预计缺货天数'], errors='coerce').fillna(0)
+    df['单价'] = pd.to_numeric(df['单价'], errors='coerce')
+    df['平均库龄天数'] = pd.to_numeric(df['平均库龄天数'], errors='coerce').fillna(0)
+    df['超龄数量'] = pd.to_numeric(df['超龄数量'], errors='coerce').fillna(0).astype(int)
     return df
 
 
 @st.cache_data
 def load_transfer_recommendation_sql():
-    """调拨建议 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM transfer_recommendation", conn)
     conn.close()
+    # 类型转换
+    df['SKU编码'] = df['SKU编码'].astype(str)
+    df['品类'] = df['品类'].astype(str)
+    df['源仓库'] = df['源仓库'].astype(str)
+    df['目标仓库'] = df['目标仓库'].astype(str)
+    df['调拨数量'] = pd.to_numeric(df['调拨数量'], errors='coerce').fillna(0).astype(int)
+    df['调拨成本'] = pd.to_numeric(df['调拨成本'], errors='coerce').fillna(0)
+    df['优先级'] = pd.to_numeric(df['优先级'], errors='coerce').fillna(0).astype(int)
     return df
 
 
 @st.cache_data
 def load_inventory_health_report_sql():
-    """库存健康报告 - SQLite"""
     conn = _get_conn()
     df = pd.read_sql_query("SELECT * FROM inventory_health_report", conn)
     conn.close()
