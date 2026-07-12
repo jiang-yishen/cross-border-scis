@@ -2,6 +2,7 @@
 跨境海外仓供应链智能决策系统 - 数据加载层
 ============================================
 统一封装所有数据文件的读取，处理中文表头，提供缓存。
+优化：使用 dtype 优化 + Parquet 优先（云端内存友好）
 """
 import os
 import pandas as pd
@@ -11,6 +12,19 @@ import streamlit as st
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+
+
+def _read_sales():
+    """优先读取 Parquet（体积小、加载快），否则回退到 CSV"""
+    parquet_path = os.path.join(DATA_DIR, "sales_daily.parquet")
+    csv_path = os.path.join(DATA_DIR, "sales_daily.csv")
+    if os.path.exists(parquet_path):
+        return pd.read_parquet(parquet_path)
+    # 读取 CSV 时指定 dtype 减少内存
+    return pd.read_csv(
+        csv_path, encoding="utf-8-sig",
+        dtype={"SKU编码": "string", "仓库ID": "string", "销售数量": "int32"}
+    )
 
 
 @st.cache_data
@@ -23,15 +37,16 @@ def load_warehouse_master():
 @st.cache_data
 def load_sku_master():
     """SKU主数据"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "品类": "category"})
     df['上市日期'] = pd.to_datetime(df['上市日期'])
     return df
 
 
 @st.cache_data
 def load_sales_daily():
-    """日销售数据"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "sales_daily.csv"), encoding="utf-8-sig")
+    """日销售数据 - dtype 优化减少内存"""
+    df = _read_sales()
     df['日期'] = pd.to_datetime(df['日期'])
     return df
 
@@ -39,7 +54,8 @@ def load_sales_daily():
 @st.cache_data
 def load_purchase_orders():
     """采购订单"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "purchase_orders.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(DATA_DIR, "purchase_orders.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "仓库ID": "string"})
     df['下单日期'] = pd.to_datetime(df['下单日期'])
     df['预计到货日期'] = pd.to_datetime(df['预计到货日期'])
     return df
@@ -48,7 +64,8 @@ def load_purchase_orders():
 @st.cache_data
 def load_logistics_tracking():
     """物流跟踪"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "logistics_tracking.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(DATA_DIR, "logistics_tracking.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "仓库ID": "string"})
     df['发货日期'] = pd.to_datetime(df['发货日期'])
     df['预计到达日期'] = pd.to_datetime(df['预计到达日期'])
     df['实际到达日期'] = pd.to_datetime(df['实际到达日期'])
@@ -58,14 +75,16 @@ def load_logistics_tracking():
 @st.cache_data
 def load_inventory_snapshot():
     """库存快照"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "仓库ID": "string"})
     return df
 
 
 @st.cache_data
 def load_demand_forecast():
     """需求预测结果"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "demand_forecast.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "demand_forecast.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "品类": "category"})
     df['日期'] = pd.to_datetime(df['日期'])
     return df
 
@@ -73,14 +92,16 @@ def load_demand_forecast():
 @st.cache_data
 def load_replenishment_plan():
     """补货计划"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "品类": "category", "仓库ID": "string"})
     return df
 
 
 @st.cache_data
 def load_transfer_recommendation():
     """调拨建议"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "transfer_recommendation.csv"), encoding="utf-8-sig")
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "transfer_recommendation.csv"), encoding="utf-8-sig",
+                     dtype={"SKU编码": "string", "品类": "category"})
     return df
 
 
