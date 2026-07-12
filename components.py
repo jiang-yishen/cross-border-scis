@@ -307,7 +307,8 @@ def sidebar_navigation():
         st.markdown("""
         <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;">
         <div style="font-size: 11px; color: #94A3B8; text-align: center;">
-            © 2024 供应链计划项目<br>基于 Streamlit 构建
+            © 2026 供应链计划项目
+        </div>
         </div>
         """, unsafe_allow_html=True)
         
