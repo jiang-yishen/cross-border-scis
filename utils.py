@@ -2,10 +2,11 @@
 跨境海外仓供应链智能决策系统 - 数据加载层
 ============================================
 统一封装所有数据文件的读取，处理中文表头，提供缓存。
-优化：使用 dtype 优化 + Parquet 优先（云端内存友好）
+优化：SQLite 数据库替代 CSV（云端内存友好，按需查询）
 """
 import os
 import json
+import sqlite3
 import pandas as pd
 import streamlit as st
 
@@ -13,15 +14,23 @@ import streamlit as st
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+DB_PATH = os.path.join(BASE_DIR, "data.db")
+
+USE_SQLITE = os.path.exists(DB_PATH)
+
+
+def _get_conn():
+    """获取 SQLite 连接（复用连接对象）"""
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 # =============================================================================
-# 首页预计算缓存（避免加载大CSV，解决云端内存溢出）
+# 首页预计算缓存（最快，无需任何数据库查询）
 # =============================================================================
 
 @st.cache_data
 def load_home_cache():
-    """加载首页预计算缓存（~2KB，无需加载任何大CSV）"""
+    """加载首页预计算缓存（~2KB，无需加载任何大文件）"""
     cache_path = os.path.join(BASE_DIR, "home_cache.json")
     if os.path.exists(cache_path):
         with open(cache_path, 'r', encoding='utf-8') as f:
@@ -29,48 +38,149 @@ def load_home_cache():
     return None
 
 
-def _read_sales():
-    """优先读取 Parquet（体积小、加载快），否则回退到 CSV"""
-    parquet_path = os.path.join(DATA_DIR, "sales_daily.parquet")
-    csv_path = os.path.join(DATA_DIR, "sales_daily.csv")
-    if os.path.exists(parquet_path):
-        return pd.read_parquet(parquet_path)
-    # 读取 CSV 时指定 dtype 减少内存
-    return pd.read_csv(
-        csv_path, encoding="utf-8-sig",
-        dtype={"SKU编码": "string", "仓库ID": "string", "销售数量": "int32"}
-    )
+# =============================================================================
+# SQLite 查询函数（云端优先）
+# =============================================================================
+
+@st.cache_data
+def load_warehouse_master_sql():
+    """仓库主数据 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM warehouse_master", conn)
+    conn.close()
+    return df
 
 
 @st.cache_data
+def load_sku_master_sql():
+    """SKU主数据 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM sku_master", conn)
+    conn.close()
+    df['上市日期'] = pd.to_datetime(df['上市日期'])
+    return df
+
+
+@st.cache_data
+def load_sales_daily_sql(sku_id=None, days=60):
+    """日销售数据 - SQLite（按需查询，只加载需要的 SKU 和天数）"""
+    conn = _get_conn()
+    if sku_id:
+        df = pd.read_sql_query(
+            "SELECT * FROM sales_daily WHERE SKU编码 = ? ORDER BY 日期 DESC LIMIT ?",
+            conn, params=(sku_id, days * 10)
+        )
+    else:
+        df = pd.read_sql_query("SELECT * FROM sales_daily", conn)
+    conn.close()
+    df['日期'] = pd.to_datetime(df['日期'])
+    return df
+
+
+@st.cache_data
+def load_purchase_orders_sql():
+    """采购订单 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM purchase_orders", conn)
+    conn.close()
+    df['下单日期'] = pd.to_datetime(df['下单日期'])
+    df['预计到货日期'] = pd.to_datetime(df['预计到货日期'])
+    return df
+
+
+@st.cache_data
+def load_logistics_tracking_sql():
+    """物流跟踪 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM logistics_tracking", conn)
+    conn.close()
+    df['发货日期'] = pd.to_datetime(df['发货日期'])
+    df['预计到达日期'] = pd.to_datetime(df['预计到达日期'])
+    df['实际到达日期'] = pd.to_datetime(df['实际到达日期'])
+    return df
+
+
+@st.cache_data
+def load_inventory_snapshot_sql():
+    """库存快照 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM inventory_snapshot", conn)
+    conn.close()
+    return df
+
+
+@st.cache_data
+def load_demand_forecast_sql():
+    """需求预测结果 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM demand_forecast", conn)
+    conn.close()
+    df['日期'] = pd.to_datetime(df['日期'])
+    return df
+
+
+@st.cache_data
+def load_replenishment_plan_sql():
+    """补货计划 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM replenishment_plan", conn)
+    conn.close()
+    return df
+
+
+@st.cache_data
+def load_transfer_recommendation_sql():
+    """调拨建议 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM transfer_recommendation", conn)
+    conn.close()
+    return df
+
+
+@st.cache_data
+def load_inventory_health_report_sql():
+    """库存健康报告 - SQLite"""
+    conn = _get_conn()
+    df = pd.read_sql_query("SELECT * FROM inventory_health_report", conn)
+    conn.close()
+    return df
+
+
+# =============================================================================
+# CSV 回退函数（本地开发用，当 SQLite 不存在时）
+# =============================================================================
+
+@st.cache_data
 def load_warehouse_master():
-    """仓库主数据"""
+    if USE_SQLITE:
+        return load_warehouse_master_sql()
     df = pd.read_csv(os.path.join(DATA_DIR, "warehouse_master.csv"), encoding="utf-8-sig")
     return df
 
 
 @st.cache_data
 def load_sku_master():
-    """SKU主数据"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "品类": "category"})
+    if USE_SQLITE:
+        return load_sku_master_sql()
+    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig")
     df['上市日期'] = pd.to_datetime(df['上市日期'])
     return df
 
 
 @st.cache_data
 def load_sales_daily():
-    """日销售数据 - dtype 优化减少内存"""
-    df = _read_sales()
+    if USE_SQLITE:
+        return load_sales_daily_sql()
+    df = pd.read_csv(os.path.join(DATA_DIR, "sales_daily.csv"), encoding="utf-8-sig")
     df['日期'] = pd.to_datetime(df['日期'])
     return df
 
 
 @st.cache_data
 def load_purchase_orders():
-    """采购订单"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "purchase_orders.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "仓库ID": "string"})
+    if USE_SQLITE:
+        return load_purchase_orders_sql()
+    df = pd.read_csv(os.path.join(DATA_DIR, "purchase_orders.csv"), encoding="utf-8-sig")
     df['下单日期'] = pd.to_datetime(df['下单日期'])
     df['预计到货日期'] = pd.to_datetime(df['预计到货日期'])
     return df
@@ -78,9 +188,9 @@ def load_purchase_orders():
 
 @st.cache_data
 def load_logistics_tracking():
-    """物流跟踪"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "logistics_tracking.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "仓库ID": "string"})
+    if USE_SQLITE:
+        return load_logistics_tracking_sql()
+    df = pd.read_csv(os.path.join(DATA_DIR, "logistics_tracking.csv"), encoding="utf-8-sig")
     df['发货日期'] = pd.to_datetime(df['发货日期'])
     df['预计到达日期'] = pd.to_datetime(df['预计到达日期'])
     df['实际到达日期'] = pd.to_datetime(df['实际到达日期'])
@@ -89,40 +199,41 @@ def load_logistics_tracking():
 
 @st.cache_data
 def load_inventory_snapshot():
-    """库存快照"""
-    df = pd.read_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "仓库ID": "string"})
+    if USE_SQLITE:
+        return load_inventory_snapshot_sql()
+    df = pd.read_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), encoding="utf-8-sig")
     return df
 
 
 @st.cache_data
 def load_demand_forecast():
-    """需求预测结果"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "demand_forecast.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "品类": "category"})
+    if USE_SQLITE:
+        return load_demand_forecast_sql()
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "demand_forecast.csv"), encoding="utf-8-sig")
     df['日期'] = pd.to_datetime(df['日期'])
     return df
 
 
 @st.cache_data
 def load_replenishment_plan():
-    """补货计划"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "品类": "category", "仓库ID": "string"})
+    if USE_SQLITE:
+        return load_replenishment_plan_sql()
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), encoding="utf-8-sig")
     return df
 
 
 @st.cache_data
 def load_transfer_recommendation():
-    """调拨建议"""
-    df = pd.read_csv(os.path.join(OUTPUT_DIR, "transfer_recommendation.csv"), encoding="utf-8-sig",
-                     dtype={"SKU编码": "string", "品类": "category"})
+    if USE_SQLITE:
+        return load_transfer_recommendation_sql()
+    df = pd.read_csv(os.path.join(OUTPUT_DIR, "transfer_recommendation.csv"), encoding="utf-8-sig")
     return df
 
 
 @st.cache_data
 def load_inventory_health_report():
-    """库存健康报告"""
+    if USE_SQLITE:
+        return load_inventory_health_report_sql()
     df = pd.read_csv(os.path.join(OUTPUT_DIR, "inventory_health_report.csv"), encoding="utf-8-sig")
     return df
 
@@ -145,34 +256,19 @@ def compute_kpis():
     po_df = load_purchase_orders()
     wh_df = load_warehouse_master()
     
-    # 1. 总SKU数 & 品类数
     total_sku = len(sku_df)
     total_category = sku_df['品类'].nunique()
-    
-    # 2. 总销售额（估算）
     merged = sales_df.merge(sku_df[['SKU编码', '单价']], on='SKU编码', how='left')
     total_revenue = (merged['销售数量'] * merged['单价']).sum()
-    
-    # 3. 总库存价值
     total_inventory_value = (inv_df['总数量'] * inv_df['单价']).sum()
-    
-    # 4. 预警统计
     red_alert = len(rep_df[rep_df['库存预警'] == '红色预警（需补货）'])
     yellow_alert = len(rep_df[rep_df['库存预警'] == '黄色预警（关注）'])
     overage_alert = len(rep_df[rep_df['库龄预警'] != '正常'])
-    
-    # 5. 在途采购订单
     in_transit_po = len(po_df[po_df['订单状态'] == '运输中'])
-    
-    # 6. 仓库数
     total_warehouse = len(wh_df)
-    
-    # 7. 平均库存周转天数（简化：总库存 / 日均销量）
     avg_daily_sales = sales_df['销售数量'].sum() / sales_df['日期'].nunique()
     total_qty = inv_df['总数量'].sum()
     turnover_days = total_qty / avg_daily_sales if avg_daily_sales > 0 else 0
-    
-    # 8. 缺货风险SKU数（预计缺货天数 < 7天）
     stockout_risk = len(rep_df[rep_df['预计缺货天数'] < 7])
     
     return {

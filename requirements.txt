@@ -6,4 +6,3 @@ pandas
 plotly
 numpy
 openpyxl
-pyarrow  # 用于 Parquet 格式（内存优化）
