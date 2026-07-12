@@ -60,7 +60,37 @@ def _dict_to_df(data, dtype_map=None):
 
 
 # =============================================================================
-# SKU / 仓库 元数据（小文件，直接加载）
+# =============================================================================
+# SKU / 仓库 元数据（小文件，直接用 SQLite 读取完整数据）
+# =============================================================================
+
+@st.cache_data
+def load_sku_master():
+    # 小表（1000行），直接用 SQLite 读完整数据
+    if USE_SQLITE:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        df = pd.read_sql_query("SELECT * FROM sku_master", conn)
+        conn.close()
+        df['上市日期'] = pd.to_datetime(df['上市日期'])
+        df['SKU编码'] = df['SKU编码'].astype(str)
+        df['品类'] = df['品类'].astype(str)
+        df['单价'] = pd.to_numeric(df['单价'], errors='coerce')
+        return df
+    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig")
+    df['上市日期'] = pd.to_datetime(df['上市日期'])
+    return df
+
+
+@st.cache_data
+def load_warehouse_master():
+    # 小表（6行），直接用 SQLite 读完整数据
+    if USE_SQLITE:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        df = pd.read_sql_query("SELECT * FROM warehouse_master", conn)
+        conn.close()
+        return df
+    df = pd.read_csv(os.path.join(DATA_DIR, "warehouse_master.csv"), encoding="utf-8-sig")
+    return df
 # =============================================================================
 
 @st.cache_data
@@ -123,14 +153,14 @@ def load_sales_daily():
 @st.cache_data
 def load_replenishment_plan():
     ic = _load_json_cache("inventory_cache.json")
-    if ic:
-        # 合并所有预警数据作为完整 replenishment_plan
-        dfs = []
-        for key in ['red_df', 'yellow_df', 'overage_df']:
-            if key in ic and ic[key]:
-                dfs.append(_dict_to_df(ic[key]))
-        if dfs:
-            return pd.concat(dfs, ignore_index=True).drop_duplicates(subset=['SKU编码', '仓库ID'])
+    if ic and 'replenishment_full' in ic:
+        return _dict_to_df(ic['replenishment_full'], {
+            'SKU编码': 'str', '品类': 'str', '仓库ID': 'str', '仓库名称': 'str',
+            'ABC分类': 'str', 'XYZ分类': 'str', '总数量': 'int', '可用数量': 'int',
+            '安全库存': 'int', '再订货点': 'int', '经济订货量': 'int', '最小起订量': 'int',
+            '日均销量': 'float', '预计缺货天数': 'float', '单价': 'float',
+            '平均库龄天数': 'float', '超龄数量': 'int'
+        })
     df = pd.read_csv(os.path.join(OUTPUT_DIR, "replenishment_plan.csv"), encoding="utf-8-sig")
     return df
 
@@ -138,9 +168,11 @@ def load_replenishment_plan():
 @st.cache_data
 def load_inventory_snapshot():
     ic = _load_json_cache("inventory_cache.json")
-    if ic and 'inv_wh' in ic:
-        # 用仓库聚合数据反推（简化）
-        return _dict_to_df(ic['inv_wh'], {'仓库ID': 'str', '总数量': 'int'})
+    if ic and 'inventory_full' in ic:
+        return _dict_to_df(ic['inventory_full'], {
+            'SKU编码': 'str', '仓库ID': 'str', '总数量': 'int', '可用数量': 'int',
+            '在途数量': 'int', '单价': 'float'
+        })
     df = pd.read_csv(os.path.join(DATA_DIR, "inventory_snapshot.csv"), encoding="utf-8-sig")
     return df
 
@@ -152,8 +184,11 @@ def load_inventory_snapshot():
 @st.cache_data
 def load_purchase_orders():
     rc = _load_json_cache("replenishment_cache.json")
-    if rc:
-        return _dict_to_df([], {'SKU编码': 'str'})  # 简化，物流页面用 logistics_cache
+    if rc and 'po_full' in rc:
+        return _dict_to_df(rc['po_full'], {
+            'SKU编码': 'str', '仓库ID': 'str', '采购数量': 'int', '采购单价': 'float',
+            '下单日期': 'datetime', '预计到货日期': 'datetime'
+        })
     df = pd.read_csv(os.path.join(DATA_DIR, "purchase_orders.csv"), encoding="utf-8-sig")
     df['下单日期'] = pd.to_datetime(df['下单日期'])
     df['预计到货日期'] = pd.to_datetime(df['预计到货日期'])
