@@ -40,13 +40,9 @@ def apply_custom_css():
     /* 隐藏Streamlit默认元素 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    /* header {visibility: hidden;} */
     /* 只隐藏header中的Streamlit logo和装饰，保留侧边栏按钮 */
     header [data-testid="stDecoration"] {display: none;}
     header [data-testid="stHeaderActionElements"] {display: none;}
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
     
     /* 侧边栏样式 - 改为浅色背景，深色文字 */
     [data-testid="stSidebar"] {
