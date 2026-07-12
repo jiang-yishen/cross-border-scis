@@ -42,6 +42,20 @@ def page_home():
     """首页仪表盘 - 全局KPI概览"""
     page_header("首页仪表盘", "实时监控跨境海外仓供应链全局运行状态")
     
+    # ====== 调试信息（部署确认用）======
+    import os
+    db_exists = os.path.exists(os.path.join(os.path.dirname(__file__), 'data.db'))
+    from utils import USE_SQLITE
+    st.sidebar.markdown(f"""
+    <div style="font-size:11px;color:#999;">
+    🔧 调试: data.db存在={db_exists}, USE_SQLITE={USE_SQLITE}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 计算KPI
+    """首页仪表盘 - 全局KPI概览"""
+    page_header("首页仪表盘", "实时监控跨境海外仓供应链全局运行状态")
+    
     # 计算KPI
     kpis = compute_kpis()
     
