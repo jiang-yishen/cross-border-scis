@@ -5,6 +5,7 @@
 优化：使用 dtype 优化 + Parquet 优先（云端内存友好）
 """
 import os
+import json
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +13,20 @@ import streamlit as st
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+
+
+# =============================================================================
+# 首页预计算缓存（避免加载大CSV，解决云端内存溢出）
+# =============================================================================
+
+@st.cache_data
+def load_home_cache():
+    """加载首页预计算缓存（~2KB，无需加载任何大CSV）"""
+    cache_path = os.path.join(BASE_DIR, "home_cache.json")
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
 
 
 def _read_sales():
@@ -117,7 +132,12 @@ def load_inventory_health_report():
 # =============================================================================
 
 def compute_kpis():
-    """计算全局关键指标"""
+    """计算全局关键指标 - 优先使用预计算缓存（避免云端内存溢出）"""
+    cache = load_home_cache()
+    if cache and 'kpis' in cache:
+        return cache['kpis']
+    
+    # Fallback: 动态计算（仅本地开发时使用）
     sku_df = load_sku_master()
     sales_df = load_sales_daily()
     inv_df = load_inventory_snapshot()

@@ -25,7 +25,7 @@ from utils import (
     load_warehouse_master, load_sku_master, load_sales_daily,
     load_purchase_orders, load_logistics_tracking, load_inventory_snapshot,
     load_demand_forecast, load_replenishment_plan, load_transfer_recommendation,
-    load_inventory_health_report, compute_kpis
+    load_inventory_health_report, compute_kpis, load_home_cache
 )
 from components import (
     set_page_config, apply_custom_css, sidebar_navigation,
@@ -87,18 +87,24 @@ def page_home():
     
     st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
     
-    # 图表区域
+    # 图表区域 - 优先使用预计算缓存（避免加载大CSV，解决云端内存溢出）
+    cache = load_home_cache()
+    use_cache = cache is not None
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 品类销售分布
-        sales_df = load_sales_daily()
-        sku_df = load_sku_master()
-        merged = sales_df.merge(sku_df[['SKU编码', '品类']], on='SKU编码', how='left')
-        cat_sales = merged.groupby('品类')['销售数量'].sum().reset_index()
-        cat_sales = cat_sales.sort_values('销售数量', ascending=False)
+        if use_cache and 'cat_sales' in cache:
+            cat_sales = pd.DataFrame(cache['cat_sales'])
+        else:
+            sales_df = load_sales_daily()
+            sku_df = load_sku_master()
+            merged = sales_df.merge(sku_df[['SKU编码', '品类']], on='SKU编码', how='left')
+            cat_sales = merged.groupby('品类')['销售数量'].sum().reset_index()
+            cat_sales = cat_sales.sort_values('销售数量', ascending=False)
         
         color_map = {
             '服装鞋履': '#1B4965', '3C电子': '#457B9D', '家居用品': '#2A9D8F',
@@ -115,9 +121,12 @@ def page_home():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # ABC-XYZ分类分布
-        rep_df = load_replenishment_plan()
-        abc_dist = rep_df.groupby('ABC分类')['SKU编码'].nunique().reset_index()
-        abc_dist.columns = ['ABC分类', 'SKU数量']
+        if use_cache and 'abc_dist' in cache:
+            abc_dist = pd.DataFrame(cache['abc_dist'])
+        else:
+            rep_df = load_replenishment_plan()
+            abc_dist = rep_df.groupby('ABC分类')['SKU编码'].nunique().reset_index()
+            abc_dist.columns = ['ABC分类', 'SKU数量']
         
         abc_colors = {'A': '#1B4965', 'B': '#457B9D', 'C': '#6B7280'}
         fig2 = create_pie_chart(abc_dist, 'ABC分类', 'SKU数量',
@@ -133,10 +142,13 @@ def page_home():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 各仓库库存价值
-        inv_df = load_inventory_snapshot()
-        wh_df = load_warehouse_master()
-        inv_wh = inv_df.groupby('仓库ID')['总数量'].sum().reset_index()
-        inv_wh = inv_wh.merge(wh_df[['仓库ID', '仓库名称']], on='仓库ID', how='left')
+        if use_cache and 'inv_wh' in cache:
+            inv_wh = pd.DataFrame(cache['inv_wh'])
+        else:
+            inv_df = load_inventory_snapshot()
+            wh_df = load_warehouse_master()
+            inv_wh = inv_df.groupby('仓库ID')['总数量'].sum().reset_index()
+            inv_wh = inv_wh.merge(wh_df[['仓库ID', '仓库名称']], on='仓库ID', how='left')
         
         fig3 = create_bar_chart(inv_wh, '仓库名称', '总数量',
                                 '各仓库库存总量分布')
@@ -148,7 +160,12 @@ def page_home():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 库存预警分布
-        alert_dist = rep_df.groupby('库存预警').size().reset_index(name='数量')
+        if use_cache and 'alert_dist' in cache:
+            alert_dist = pd.DataFrame(cache['alert_dist'])
+        else:
+            rep_df = load_replenishment_plan()
+            alert_dist = rep_df.groupby('库存预警').size().reset_index(name='数量')
+        
         alert_colors = {
             '正常': '#2A9D8F',
             '黄色预警（关注）': '#F4A261',
