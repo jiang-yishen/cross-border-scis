@@ -1658,15 +1658,10 @@ def page_logistics():
             x=monthly['月份'], y=monthly['采购数量'],
             name='采购数量', marker_color='#457B9D'
         ))
-        fig4.add_trace(go.Scatter(
-            x=monthly['月份'], y=monthly['订单数'],
-            name='订单数', mode='lines+markers', marker_color='#E63946',
-            yaxis='y2'
-        ))
         fig4.update_layout(
-            title='月度采购趋势',
-            yaxis=dict(title='采购数量', titlefont_color='#457B9D'),
-            yaxis2=dict(title='订单数', titlefont_color='#E63946', overlaying='y', side='right'),
+            title=dict(text='月度采购趋势'),
+            yaxis=dict(title=dict(text='采购数量', font=dict(color='#457B9D'))),
+            yaxis2=dict(title=dict(text='订单数', font=dict(color='#E63946')), overlaying='y', side='right'),
             height=350, barmode='group'
         )
         fig4 = apply_plotly_theme(fig4)
