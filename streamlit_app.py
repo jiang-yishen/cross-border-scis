@@ -2341,7 +2341,7 @@ def main():
         page_transfer()
     elif selected_page == "📋 采购物流跟踪":
         page_logistics()
-    elif selected_page == 📘 使用指南:
+    elif selected_page == "📘 使用指南":
         page_guide()
     elif selected_page == "⚙️ 运维中心":
         page_ops_center()
