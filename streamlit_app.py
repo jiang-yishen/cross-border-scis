@@ -1988,7 +1988,7 @@ def page_guide():
         st.markdown("""
         <div style="background: #F8FAFC; border-radius: 10px; padding: 16px;">
             <p style="margin: 0 0 8px 0; color: #1B4965; font-weight: 600;">系统版本</p>
-            <p style="margin: 0; color: #6B7280; font-size: 13px;">v1.0.0 (2025.01)</p>
+            <p style="margin: 0; color: #6B7280; font-size: 13px;">v1.0.0 (2026.07)</p>
             <p style="margin: 8px 0 0 0; color: #6B7280; font-size: 13px;">技术栈：Streamlit + Python</p>
         </div>
         """, unsafe_allow_html=True)
