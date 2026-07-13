@@ -18,11 +18,12 @@
 import streamlit as st
 import pandas as pd
 import os
-import plotly.express as px
-import pandas as pd
+import json
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+
+import gitee_storage
 
 from utils import (
     load_warehouse_master, load_sku_master, load_sales_daily,
@@ -2015,6 +2016,304 @@ def page_guide():
 
 
 # =============================================================================
+# 运维中心页面
+# =============================================================================
+
+def page_ops_center():
+    """运维中心：问题反馈提交 + 系统维护管理（管理员权限）"""
+    st.title("⚙️ 运维中心")
+    st.markdown("<p style='color: #6B7280;'>问题反馈提交与系统工单管理</p>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    # ── Session State 初始化 ──
+    if "ops_admin_logged_in" not in st.session_state:
+        st.session_state.ops_admin_logged_in = False
+    if "feedback_submitted" not in st.session_state:
+        st.session_state.feedback_submitted = False
+
+    # ── Gitee 配置读取 ──
+    gitee_config = gitee_storage.get_config()
+    gitee_available = gitee_config is not None
+
+    # ── 管理员登录区（仅未登录时显示） ──
+    if not st.session_state.ops_admin_logged_in:
+        st.markdown("""
+        <div style="background: #F8FAFC; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+            <h4 style="color: #1B4965; margin: 0 0 8px 0;">🔐 管理员入口</h4>
+            <p style="color: #6B7280; font-size: 13px; margin: 0;">
+                输入管理员密码后可进入「系统维护」模块，查看工单列表与发布系统通知。
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        c1, c2, c3 = st.columns([2, 2, 1])
+        with c1:
+            admin_pwd = st.text_input("管理员密码", type="password", key="ops_admin_pwd_input")
+        with c2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("登录", type="primary", use_container_width=True, key="ops_admin_login_btn"):
+                if admin_pwd == "jwyjys5210":
+                    st.session_state.ops_admin_logged_in = True
+                    st.success("✅ 管理员登录成功")
+                    st.rerun()
+                else:
+                    st.error("❌ 密码错误")
+        with c3:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    else:
+        # 已登录提示 + 退出按钮
+        col_info, col_btn = st.columns([4, 1])
+        with col_info:
+            st.success("🔓 管理员模式已开启，您可查看「系统维护」模块")
+        with col_btn:
+            if st.button("🚪 退出", type="secondary", use_container_width=True, key="ops_admin_logout_btn"):
+                st.session_state.ops_admin_logged_in = False
+                st.rerun()
+
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+    # ── 标签页 ──
+    if st.session_state.ops_admin_logged_in:
+        tabs = st.tabs(["📮 问题反馈", "🔐 系统维护"])
+    else:
+        tabs = st.tabs(["📮 问题反馈"])
+
+    # ── 标签页1: 问题反馈 ──
+    with tabs[0]:
+        _render_feedback_tab(gitee_config, gitee_available)
+
+    # ── 标签页2: 系统维护（仅管理员） ──
+    if st.session_state.ops_admin_logged_in:
+        with tabs[1]:
+            _render_admin_tab(gitee_config, gitee_available)
+
+
+# ── 内部子函数：问题反馈 ──
+
+def _render_feedback_tab(gitee_config, gitee_available):
+    """渲染问题反馈提交表单"""
+    st.markdown("<h3 style='color: #1B4965;'>📮 提交问题反馈</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #6B7280; font-size: 13px;'>请描述您在使用过程中遇到的问题，我们会尽快处理。</p>", unsafe_allow_html=True)
+
+    # 数据持久化提示
+    if not gitee_available:
+        st.info("💡 当前为本地开发模式，反馈数据仅保存在当前会话中。生产环境已配置 Gitee 持久化存储。")
+
+    with st.form("feedback_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            fb_type = st.selectbox(
+                "异常类型",
+                ["功能异常", "数据显示错误", "页面加载缓慢", "预测结果异常", "操作体验问题", "其他建议"],
+                key="fb_type"
+            )
+        with col2:
+            fb_page = st.selectbox(
+                "涉及模块",
+                ["首页仪表盘", "数据导入", "需求预测分析", "库存健康监控", "补货计划看板", "调拨建议", "采购物流跟踪", "使用指南", "运维中心"],
+                key="fb_page"
+            )
+
+        fb_desc = st.text_area(
+            "问题描述",
+            placeholder="请详细描述您遇到的问题，包括操作步骤、预期结果与实际结果...",
+            height=120,
+            key="fb_desc"
+        )
+
+        col3, col4 = st.columns(2)
+        with col3:
+            fb_contact = st.text_input("联系方式（可选）", placeholder="邮箱 / 手机号", key="fb_contact")
+        with col4:
+            fb_urgency = st.select_slider(
+                "紧急程度",
+                options=["低", "中", "高"],
+                value="中",
+                key="fb_urgency"
+            )
+
+        submitted = st.form_submit_button("📤 提交反馈", use_container_width=True, type="primary")
+
+        if submitted:
+            if not fb_desc or fb_desc.strip() == "":
+                st.error("❌ 问题描述不能为空，请填写后重试。")
+            else:
+                feedback_data = {
+                    "id": f"fb_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "type": fb_type,
+                    "page": fb_page,
+                    "description": fb_desc.strip(),
+                    "contact": fb_contact or "未填写",
+                    "urgency": fb_urgency,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "待处理",
+                    "update_time": ""
+                }
+
+                if gitee_available and gitee_config:
+                    try:
+                        with st.spinner("正在提交到 Gitee 仓库..."):
+                            gitee_storage.save_feedback(feedback_data, gitee_config)
+                        st.success(f"✅ 反馈提交成功！工单号：{feedback_data['id']}")
+                        st.info("📋 您的反馈已持久化到 Gitee 仓库，管理员可在「系统维护」模块查看。")
+                    except Exception as e:
+                        st.error(f"❌ Gitee 提交失败：{e}")
+                        st.warning("数据已保存到本地会话，请截图留存。")
+                        # 回退到 session_state
+                        if "local_feedbacks" not in st.session_state:
+                            st.session_state.local_feedbacks = []
+                        st.session_state.local_feedbacks.append(feedback_data)
+                else:
+                    # 本地模式：存入 session_state
+                    if "local_feedbacks" not in st.session_state:
+                        st.session_state.local_feedbacks = []
+                    st.session_state.local_feedbacks.append(feedback_data)
+                    st.success(f"✅ 反馈提交成功！（本地会话模式）工单号：{feedback_data['id']}")
+
+    # 我的提交历史
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #1B4965;'>📝 本次会话的提交记录</h4>", unsafe_allow_html=True)
+
+    local_records = st.session_state.get("local_feedbacks", [])
+    if local_records:
+        df_fb = pd.DataFrame(local_records)
+        display_df = df_fb[["id", "type", "page", "urgency", "timestamp", "status"]].copy()
+        display_df.columns = ["工单号", "类型", "模块", "紧急度", "提交时间", "状态"]
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("暂无本次会话的提交记录。")
+
+
+# ── 内部子函数：系统维护（管理员） ──
+
+def _render_admin_tab(gitee_config, gitee_available):
+    """渲染系统维护管理面板（仅管理员可见）"""
+    st.markdown("<h3 style='color: #1B4965;'>🔐 系统维护管理</h3>", unsafe_allow_html=True)
+
+    if not gitee_available:
+        st.warning("⚠️ Gitee 配置未生效，无法读取远程工单数据。请检查 Secrets 配置。")
+
+    # 子标签：工单列表 + 系统通知
+    sub_tab1, sub_tab2 = st.tabs(["📋 工单列表", "📢 系统通知"])
+
+    # ── 子标签1: 工单列表 ──
+    with sub_tab1:
+        st.markdown("<p style='color: #6B7280; font-size: 13px;'>所有用户提交的反馈工单，支持状态更新。</p>", unsafe_allow_html=True)
+
+        feedbacks = []
+        if gitee_available and gitee_config:
+            try:
+                with st.spinner("正在从 Gitee 拉取工单数据..."):
+                    feedbacks = gitee_storage.load_all_feedbacks(gitee_config)
+            except Exception as e:
+                st.error(f"❌ 拉取失败：{e}")
+        else:
+            feedbacks = st.session_state.get("local_feedbacks", [])
+
+        if not feedbacks:
+            st.info("📭 暂无工单数据。")
+        else:
+            st.success(f"📬 共加载 {len(feedbacks)} 条工单")
+
+            for i, fb in enumerate(feedbacks):
+                status_color = {
+                    "待处理": "#E63946",
+                    "处理中": "#F4A261",
+                    "已解决": "#2A9D8F",
+                    "已关闭": "#6B7280"
+                }.get(fb.get("status", "待处理"), "#6B7280")
+
+                with st.expander(f"[{fb.get('status', '待处理')}] {fb.get('type', '未知')} — {fb.get('page', '未知')} ({fb.get('timestamp', '未知')})"):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"**工单号：** `{fb.get('id', 'N/A')}`")
+                        st.markdown(f"**描述：** {fb.get('description', '无')}")
+                        st.markdown(f"**联系方式：** {fb.get('contact', '未填写')}")
+                        st.markdown(f"**紧急度：** {'🔴' if fb.get('urgency') == '高' else '🟡' if fb.get('urgency') == '中' else '🟢'} {fb.get('urgency', '中')}")
+                    with col2:
+                        new_status = st.selectbox(
+                            "更新状态",
+                            ["待处理", "处理中", "已解决", "已关闭"],
+                            index=["待处理", "处理中", "已解决", "已关闭"].index(fb.get("status", "待处理")),
+                            key=f"status_{fb.get('id', i)}"
+                        )
+                        if st.button("保存状态", key=f"save_{fb.get('id', i)}", use_container_width=True):
+                            if gitee_available and gitee_config and fb.get("_path") and fb.get("_sha"):
+                                try:
+                                    gitee_storage.update_feedback_status(fb["_path"], fb["_sha"], new_status, gitee_config)
+                                    st.success("✅ 状态更新成功")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ 更新失败：{e}")
+                            else:
+                                fb["status"] = new_status
+                                fb["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                st.success("✅ 本地状态已更新")
+                                st.rerun()
+
+    # ── 子标签2: 系统通知 ──
+    with sub_tab2:
+        st.markdown("<p style='color: #6B7280; font-size: 13px;'>发布系统维护通知、更新日志与计划停机公告。</p>", unsafe_allow_html=True)
+
+        # 发布新通知
+        with st.form("announcement_form"):
+            ann_title = st.text_input("通知标题", placeholder="例如：系统维护公告（2026.07.15）")
+            ann_body = st.text_area("通知内容", placeholder="请填写维护时间、影响范围、注意事项...", height=100)
+            ann_level = st.selectbox("通知级别", [("info", "ℹ️ 普通通知"), ("warning", "⚠️ 重要提醒"), ("critical", "🚨 紧急公告")], format_func=lambda x: x[1])
+            if st.form_submit_button("📢 发布通知", use_container_width=True, type="primary"):
+                if ann_title and ann_body:
+                    if gitee_available and gitee_config:
+                        try:
+                            gitee_storage.add_announcement(ann_title, ann_body, ann_level[0], gitee_config)
+                            st.success("✅ 通知已发布到 Gitee 仓库")
+                        except Exception as e:
+                            st.error(f"❌ 发布失败：{e}")
+                    else:
+                        if "local_announcements" not in st.session_state:
+                            st.session_state.local_announcements = []
+                        st.session_state.local_announcements.insert(0, {
+                            "id": f"ann_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                            "title": ann_title,
+                            "body": ann_body,
+                            "level": ann_level[0],
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        })
+                        st.success("✅ 本地通知已发布（生产环境将持久化到 Gitee）")
+                else:
+                    st.error("❌ 标题和内容不能为空")
+
+        # 通知列表
+        st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #1B4965;'>📜 历史通知</h4>", unsafe_allow_html=True)
+
+        announcements = []
+        if gitee_available and gitee_config:
+            try:
+                announcements = gitee_storage.load_announcements(gitee_config)
+            except Exception:
+                announcements = []
+        else:
+            announcements = st.session_state.get("local_announcements", [])
+
+        if not announcements:
+            st.info("暂无系统通知。")
+        else:
+            for ann in announcements[:20]:
+                level_color = {"info": "#457B9D", "warning": "#F4A261", "critical": "#E63946"}.get(ann.get("level", "info"), "#457B9D")
+                level_icon = {"info": "ℹ️", "warning": "⚠️", "critical": "🚨"}.get(ann.get("level", "info"), "ℹ️")
+                st.markdown(f"""
+                <div style="background: white; border-radius: 10px; padding: 16px; margin-bottom: 12px;
+                            box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid {level_color};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-weight: 600; color: {level_color}; font-size: 14px;">{level_icon} {ann.get('title', '无标题')}</span>
+                        <span style="color: #9CA3AF; font-size: 12px;">{ann.get('timestamp', '')}</span>
+                    </div>
+                    <p style="color: #4B5563; font-size: 13px; margin: 0; line-height: 1.5;">{ann.get('body', '')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+
+# =============================================================================
 # 主入口
 # =============================================================================
 
@@ -2042,8 +2341,10 @@ def main():
         page_transfer()
     elif selected_page == "📋 采购物流跟踪":
         page_logistics()
-    elif selected_page == "📘 使用指南":
+    elif selected_page == 📘 使用指南:
         page_guide()
+    elif selected_page == "⚙️ 运维中心":
+        page_ops_center()
 
 
 if __name__ == "__main__":

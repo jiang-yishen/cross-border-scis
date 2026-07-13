@@ -286,6 +286,7 @@ NAV_PAGES = [
     {"key": "transfer",  "icon": "🚚", "title": "调拨建议",       "desc": "智能库存调拨与成本优化",     "color": "#6B7280"},
     {"key": "logistics", "icon": "📋", "title": "采购物流跟踪",   "desc": "在途订单与到货跟踪",         "color": "#1B4965"},
     {"key": "guide",     "icon": "📘", "title": "使用指南",       "desc": "系统操作手册与流程说明",     "color": "#457B9D"},
+    {"key": "ops",       "icon": "⚙️", "title": "运维中心",       "desc": "问题反馈与系统维护",         "color": "#6B7280"},
 ]
 
 def sidebar_navigation():
