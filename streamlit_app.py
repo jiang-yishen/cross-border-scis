@@ -234,27 +234,107 @@ def page_data_import():
             st.success(f"✅ 成功导入 {len(df_po):,} 条采购记录")
             st.dataframe(df_po.head(5), use_container_width=True)
     
-    # Schema验证说明
+    # Schema验证说明 - 按文件类型分组的完整字段映射
     st.markdown("""
     <div style="background: #F0F9FF; border-radius: 8px; padding: 16px; margin-top: 24px;
                 border-left: 4px solid #1B4965;">
         <h5 style="color: #1B4965; margin-top: 0;">📋 Schema 验证规则</h5>
         <p style="color: #374151; font-size: 13px; margin-bottom: 8px;">
-            系统会自动验证上传文件的字段名称是否符合标准Schema映射：
+            系统会自动验证上传文件的字段名称是否符合标准Schema映射。请严格按照以下字段要求准备CSV文件，<b>字段缺失或格式错误将导致导入失败</b>。
         </p>
-        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
-            <tr style="background: #E0F2FE;">
-                <th style="padding: 8px; text-align: left; border: 1px solid #BAE6FD;">标准字段（英文）</th>
-                <th style="padding: 8px; text-align: left; border: 1px solid #BAE6FD;">展示字段（中文）</th>
-                <th style="padding: 8px; text-align: left; border: 1px solid #BAE6FD;">数据类型</th>
-            </tr>
-            <tr><td style="padding: 6px; border: 1px solid #E5E7EB;">sku_id</td><td style="padding: 6px; border: 1px solid #E5E7EB;">SKU编码</td><td style="padding: 6px; border: 1px solid #E5E7EB;">字符串</td></tr>
-            <tr><td style="padding: 6px; border: 1px solid #E5E7EB;">warehouse_id</td><td style="padding: 6px; border: 1px solid #E5E7EB;">仓库ID</td><td style="padding: 6px; border: 1px solid #E5E7EB;">字符串</td></tr>
-            <tr><td style="padding: 6px; border: 1px solid #E5E7EB;">date</td><td style="padding: 6px; border: 1px solid #E5E7EB;">日期</td><td style="padding: 6px; border: 1px solid #E5E7EB;">YYYY-MM-DD</td></tr>
-            <tr><td style="padding: 6px; border: 1px solid #E5E7EB;">units_sold</td><td style="padding: 6px; border: 1px solid #E5E7EB;">销售数量</td><td style="padding: 6px; border: 1px solid #E5E7EB;">整数</td></tr>
-        </table>
     </div>
     """, unsafe_allow_html=True)
+    
+    # 使用 Streamlit 原生表格组件展示Schema（支持中文，比HTML更稳定）
+    schema_tabs = st.tabs(["📊 销售数据", "📦 SKU主数据", "📋 库存快照", "📝 采购订单"])
+    
+    with schema_tabs[0]:
+        sales_schema = pd.DataFrame({
+            "标准字段（英文）": ["date", "sku_id", "warehouse_id", "units_sold", "units_returned"],
+            "展示字段（中文）": ["日期", "SKU编码", "仓库ID", "销售数量", "退货数量"],
+            "数据类型": ["日期", "字符串", "字符串", "整数", "整数"],
+            "是否必填": ["✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "❌ 选填"],
+            "示例值": ["2025-01-15", "SKU00001", "WH01", "15", "0"],
+            "约束说明": [
+                "YYYY-MM-DD格式，如2025-01-15",
+                "长度10位，前缀SKU+5位数字",
+                "长度4位，前缀WH+2位数字",
+                "非负整数，记录当日销售件数",
+                "非负整数，记录当日退货件数"
+            ]
+        })
+        st.dataframe(sales_schema, use_container_width=True, hide_index=True)
+        st.info("💡 销售数据是需求预测和库存分析的基础数据，必须包含完整的日期序列，建议覆盖至少6个月历史数据。")
+    
+    with schema_tabs[1]:
+        sku_schema = pd.DataFrame({
+            "标准字段（英文）": ["sku_id", "sku_name", "category", "supplier_id", "unit_price", "weight_kg", "launch_date", "lifecycle_months", "seasonal_strength", "return_rate", "moq", "lead_time_days"],
+            "展示字段（中文）": ["SKU编码", "SKU名称", "品类", "供应商ID", "单价", "重量(kg)", "上市日期", "生命周期月数", "季节性强度", "退货率", "最小起订量", "采购提前期天数"],
+            "数据类型": ["字符串", "字符串", "字符串", "字符串", "小数", "小数", "日期", "整数", "小数", "小数", "整数", "整数"],
+            "是否必填": ["✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "❌ 选填", "❌ 选填", "❌ 选填", "❌ 选填", "❌ 选填", "✅ 必填", "✅ 必填"],
+            "示例值": ["SKU00001", "无线蓝牙耳机Pro", "3C电子", "SUP001", "29.99", "0.35", "2024-03-01", "12", "0.65", "0.03", "100", "35"],
+            "约束说明": [
+                "长度10位，SKU+5位数字",
+                "SKU完整名称，用于报表展示",
+                "枚举值：服装鞋履/3C电子/家居用品/宠物用品/美妆个护/运动户外",
+                "供应商唯一编码",
+                "美元计价，保留2位小数",
+                "单位千克，用于物流运费计算",
+                "YYYY-MM-DD格式",
+                "从上市日期到当前月份数",
+                "0-1之间，越高代表季节性越强",
+                "0-1之间，退货率百分比",
+                "采购最小起订量，整数",
+                "从下单到入库的平均天数"
+            ]
+        })
+        st.dataframe(sku_schema, use_container_width=True, hide_index=True)
+        st.info("💡 SKU主数据是所有模块的基础字典表，品类和提前期字段直接影响预测算法和补货策略的准确性。")
+    
+    with schema_tabs[2]:
+        inv_schema = pd.DataFrame({
+            "标准字段（英文）": ["sku_id", "warehouse_id", "available_qty", "in_transit_qty", "total_qty", "avg_age_days", "overage_qty", "unit_price", "daily_sales"],
+            "展示字段（中文）": ["SKU编码", "仓库ID", "可用数量", "在途数量", "总数量", "平均库龄天数", "超龄数量", "单价", "日均销量"],
+            "数据类型": ["字符串", "字符串", "整数", "整数", "整数", "整数", "整数", "小数", "小数"],
+            "是否必填": ["✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "❌ 选填", "❌ 选填", "❌ 选填", "❌ 选填"],
+            "示例值": ["SKU00001", "WH01", "120", "50", "170", "28", "0", "29.99", "3.5"],
+            "约束说明": [
+                "必须与SKU主表一致",
+                "必须与仓库主表一致",
+                "当前可售库存，非负整数",
+                "已发货未到库数量，非负整数",
+                "可用+在途之和，非负整数",
+                "该SKU在该仓库的平均库龄",
+                "超过90天的库存数量",
+                "美元计价，用于库存价值计算",
+                "近30天平均日销量"
+            ]
+        })
+        st.dataframe(inv_schema, use_container_width=True, hide_index=True)
+        st.info("💡 库存快照是库存健康监控的核心输入数据，建议每日更新一次，确保可用数量、在途数量与实际情况一致。")
+    
+    with schema_tabs[3]:
+        po_schema = pd.DataFrame({
+            "标准字段（英文）": ["po_id", "sku_id", "supplier_id", "warehouse_id", "order_date", "order_qty", "received_qty", "unit_cost", "eta_date", "status"],
+            "展示字段（中文）": ["采购订单ID", "SKU编码", "供应商ID", "仓库ID", "下单日期", "订购数量", "到货数量", "单位成本", "预计到货日期", "订单状态"],
+            "数据类型": ["字符串", "字符串", "字符串", "字符串", "日期", "整数", "整数", "小数", "日期", "字符串"],
+            "是否必填": ["✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "✅ 必填", "❌ 选填", "✅ 必填", "✅ 必填", "✅ 必填"],
+            "示例值": ["PO2025001", "SKU00001", "SUP001", "WH01", "2025-01-01", "500", "0", "12.50", "2025-02-05", "运输中"],
+            "约束说明": [
+                "唯一采购订单编号",
+                "必须与SKU主表一致",
+                "必须与供应商主表一致",
+                "目标入库仓库ID",
+                "YYYY-MM-DD格式",
+                "本次采购总数量，非负整数",
+                "已到货数量，到货时更新",
+                "美元计价，不含关税运费",
+                "YYYY-MM-DD格式",
+                "枚举值：待确认/已下单/运输中/已入库/已取消"
+            ]
+        })
+        st.dataframe(po_schema, use_container_width=True, hide_index=True)
+        st.info("💡 采购订单数据用于采购物流跟踪和库存健康监控中的在途数量计算，订单状态必须准确更新。")
     
     # 内置演示数据说明
     st.markdown("""
