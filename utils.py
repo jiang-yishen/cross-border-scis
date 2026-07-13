@@ -6,6 +6,7 @@
 """
 import os
 import json
+import sqlite3
 import pandas as pd
 import streamlit as st
 
@@ -91,31 +92,6 @@ def load_warehouse_master():
         return df
     df = pd.read_csv(os.path.join(DATA_DIR, "warehouse_master.csv"), encoding="utf-8-sig")
     return df
-# =============================================================================
-
-@st.cache_data
-def load_sku_master():
-    # 尝试从缓存获取
-    fc = _load_json_cache("forecast_cache.json")
-    if fc and 'sku_list' in fc:
-        return _dict_to_df([
-            {"SKU编码": s} for s in fc['sku_list']
-        ])
-    # Fallback: 读 CSV
-    df = pd.read_csv(os.path.join(DATA_DIR, "sku_master.csv"), encoding="utf-8-sig")
-    df['上市日期'] = pd.to_datetime(df['上市日期'])
-    return df
-
-
-@st.cache_data
-def load_warehouse_master():
-    fc = _load_json_cache("replenishment_cache.json")
-    if fc and 'warehouses' in fc:
-        return _dict_to_df(fc['warehouses'])
-    df = pd.read_csv(os.path.join(DATA_DIR, "warehouse_master.csv"), encoding="utf-8-sig")
-    return df
-
-
 # =============================================================================
 # 需求预测页面数据（从 forecast_cache.json）
 # =============================================================================
