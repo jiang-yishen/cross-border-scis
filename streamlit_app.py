@@ -2241,6 +2241,7 @@ def _render_admin_tab(gitee_config, gitee_available):
                             if gitee_available and gitee_config and fb.get("_path") and fb.get("_sha"):
                                 try:
                                     gitee_storage.update_feedback_status(fb["_path"], fb["_sha"], new_status, gitee_config)
+
                                     st.success("✅ 状态更新成功")
                                     st.rerun()
                                 except Exception as e:

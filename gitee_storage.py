@@ -77,7 +77,10 @@ def create_or_update_file(path, content_str, message, config):
     if sha:
         payload["sha"] = sha
 
-    resp = requests.post(url, json=payload, timeout=15)
+    if sha:
+        resp = requests.put(url, json=payload, timeout=15)
+    else:
+        resp = requests.post(url, json=payload, timeout=15)
     resp.raise_for_status()
     return resp.json()
 
@@ -134,19 +137,16 @@ def load_all_feedbacks(config):
 
 
 def update_feedback_status(path, sha, new_status, config):
-    """更新指定反馈文件的状态字段。"""
-    try:
-        data = read_file_raw(path, config)
-        raw = base64.b64decode(data["content"]).decode("utf-8")
-        fb = json.loads(raw)
-        fb["status"] = new_status
-        fb["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        new_content = json.dumps(fb, ensure_ascii=False, indent=2)
-        msg = f"update status: {new_status}"
-        create_or_update_file(path, new_content, msg, config)
-        return True
-    except Exception:
-        return False
+    """更新指定反馈文件的状态字段。失败时抛出异常而非静默返回。"""
+    data = read_file_raw(path, config)
+    raw = base64.b64decode(data["content"]).decode("utf-8")
+    fb = json.loads(raw)
+    fb["status"] = new_status
+    fb["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_content = json.dumps(fb, ensure_ascii=False, indent=2)
+    msg = f"update status: {new_status}"
+    result = create_or_update_file(path, new_content, msg, config)
+    return result
 
 
 # ---------------------------------------------------------------------------
