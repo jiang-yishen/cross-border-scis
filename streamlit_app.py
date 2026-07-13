@@ -2240,18 +2240,18 @@ def _render_admin_tab(gitee_config, gitee_available):
                         if st.button("保存状态", key=f"save_{fb.get('id', i)}", use_container_width=True):
                             if gitee_available and gitee_config and fb.get("_path") and fb.get("_sha"):
                                 try:
-                                    gitee_storage.update_feedback_status(fb["_path"], fb["_sha"], new_status, gitee_config)
-
-                                    st.success("✅ 状态更新成功")
-                                    st.rerun()
+                                    with st.spinner("正在同步Gitee仓库..."):
+                                        gitee_storage.update_feedback_status(fb["_path"], fb["_sha"], new_status, gitee_config)
+                                    # 直接更新本地状态，不刷新页面
+                                    fb["status"] = new_status
+                                    fb["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    st.toast("✅ 状态已更新至Gitee仓库", icon="🎉")
                                 except Exception as e:
-                                    st.error(f"❌ 更新失败：{e}")
+                                    st.error(f"❌ Gitee更新失败：{e}")
                             else:
                                 fb["status"] = new_status
                                 fb["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                st.success("✅ 本地状态已更新")
-                                st.rerun()
-
+                                st.toast("✅ 本地状态已更新", icon="💾")
     # ── 子标签2: 系统通知 ──
     with sub_tab2:
         st.markdown("<p style='color: #6B7280; font-size: 13px;'>发布系统维护通知、更新日志与计划停机公告。</p>", unsafe_allow_html=True)
