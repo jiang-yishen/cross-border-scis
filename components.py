@@ -273,43 +273,116 @@ def page_header(title: str, subtitle: str = ""):
 
 
 # =============================================================================
-# 侧边栏导航
+# 侧边栏导航（大卡片样式）
 # =============================================================================
 
+# 页面配置：每个页面包含图标、标题、描述、颜色
+NAV_PAGES = [
+    {"key": "home",      "icon": "🏠", "title": "首页仪表盘",     "desc": "全局KPI概览与实时监控",     "color": "#1B4965"},
+    {"key": "import",    "icon": "📤", "title": "数据导入",       "desc": "ERP数据导入与Schema验证",   "color": "#457B9D"},
+    {"key": "forecast",  "icon": "📈", "title": "需求预测分析",   "desc": "Prophet+XGBoost混合预测",   "color": "#2A9D8F"},
+    {"key": "inventory", "icon": "📦", "title": "库存健康监控",   "desc": "ABC-XYZ分类与智能预警",     "color": "#E63946"},
+    {"key": "replenish", "icon": "🔄", "title": "补货计划看板",   "desc": "ROP触发与EOQ建议",         "color": "#F4A261"},
+    {"key": "transfer",  "icon": "🚚", "title": "调拨建议",       "desc": "智能库存调拨与成本优化",     "color": "#6B7280"},
+    {"key": "logistics", "icon": "📋", "title": "采购物流跟踪",   "desc": "在途订单与到货跟踪",         "color": "#1B4965"},
+]
+
 def sidebar_navigation():
-    """渲染侧边栏导航，返回用户选择的页面"""
+    """渲染侧边栏大卡片导航，返回用户选择的页面标题字符串"""
+    # 注入导航卡片CSS（加宽侧边栏 + 美化按钮为大卡片）
+    st.markdown("""
+    <style>
+    /* 加宽侧边栏 */
+    [data-testid="stSidebar"] {
+        min-width: 260px !important;
+        max-width: 280px !important;
+    }
+    [data-testid="stSidebarContent"] {
+        padding: 0 10px !important;
+    }
+    /* 导航按钮容器 */
+    .nav-card-wrapper { margin: 5px 0; }
+    .nav-card-wrapper .stButton > button {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        padding: 14px 16px !important;
+        border-radius: 10px !important;
+        border: 1.5px solid transparent !important;
+        background: #FFFFFF !important;
+        color: #1E293B !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        text-align: left !important;
+        height: auto !important;
+        min-height: 56px !important;
+        width: 100% !important;
+        transition: all 0.2s !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    }
+    .nav-card-wrapper .stButton > button:hover {
+        background: #F1F5F9 !important;
+        border-color: #CBD5E1 !important;
+        transform: translateX(2px) !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
+    }
+    /* 选中状态 - 深色背景 */
+    .nav-card-wrapper .stButton > button[kind="primary"] {
+        background: #1B4965 !important;
+        border-color: #1B4965 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 2px 8px rgba(27,73,101,0.25) !important;
+    }
+    .nav-card-wrapper .stButton > button[kind="primary"]:hover {
+        background: #234B6B !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     with st.sidebar:
+        # Logo区域
         st.markdown("""
-        <div style="text-align: center; padding: 20px 0;">
-            <div style="font-size: 28px; margin-bottom: 8px;">🌐</div>
-            <div style="font-size: 16px; font-weight: 700; color: #1B4965;">
+        <div style="text-align: center; padding: 16px 0 10px 0;">
+            <div style="font-size: 32px; margin-bottom: 6px;">🌐</div>
+            <div style="font-size: 15px; font-weight: 700; color: #1B4965;">
                 跨境海外仓<br>供应链智能决策系统
             </div>
-            <div style="font-size: 11px; color: #64748B; margin-top: 4px;">
+            <div style="font-size: 10px; color: #94A3B8; margin-top: 3px;">
                 SC-Decision Engine v1.0
             </div>
         </div>
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;">
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 10px 0;">
         """, unsafe_allow_html=True)
         
-        pages = [
-            "🏠 首页仪表盘",
-            "📤 数据导入",
-            "📈 需求预测分析",
-            "📦 库存健康监控",
-            "🔄 补货计划看板",
-            "🚚 调拨建议",
-            "📋 采购物流跟踪",
-        ]
+        # 初始化 session state（保持与旧版radio返回格式一致）
+        if "nav_page" not in st.session_state:
+            st.session_state.nav_page = "🏠 首页仪表盘"
         
-        selected = st.radio("导航", pages, label_visibility="collapsed")
+        # 渲染每个导航卡片按钮
+        for pg in NAV_PAGES:
+            display_label = f"{pg['icon']} {pg['title']}"
+            is_active = st.session_state.nav_page == display_label
+            btn_type = "primary" if is_active else "secondary"
+            
+            with st.container():
+                st.markdown('<div class="nav-card-wrapper">', unsafe_allow_html=True)
+                if st.button(
+                    display_label,
+                    key=f"nav_{pg['key']}",
+                    use_container_width=True,
+                    type=btn_type,
+                    help=pg['desc']
+                ):
+                    st.session_state.nav_page = display_label
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
         
+        # 底部版权
         st.markdown("""
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 16px 0;">
-        <div style="font-size: 11px; color: #94A3B8; text-align: center;">
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 12px 0;">
+        <div style="font-size: 10px; color: #94A3B8; text-align: center;">
             © 2026 供应链计划项目
         </div>
-        </div>
         """, unsafe_allow_html=True)
         
-        return selected
+        return st.session_state.nav_page
