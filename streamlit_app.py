@@ -17,6 +17,9 @@
 """
 import streamlit as st
 import pandas as pd
+import os
+import plotly.express as px
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -1878,6 +1881,140 @@ def page_logistics():
 
 
 # =============================================================================
+# 使用指南页面
+# =============================================================================
+
+def page_guide():
+    """使用指南页面：系统操作手册展示与下载"""
+    st.title("📘 使用指南")
+    st.markdown("<p style='color: #6B7280;'>系统操作手册与流程说明</p>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # 手册下载区域
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1B4965 0%, #457B9D 100%);
+                border-radius: 16px; padding: 32px; margin-bottom: 24px;
+                color: white; text-align: center;">
+        <h2 style="color: white; margin: 0 0 12px 0; font-size: 24px;">📋 系统操作手册</h2>
+        <p style="color: rgba(255,255,255,0.85); margin: 0 0 20px 0; font-size: 15px;">
+            包含完整的系统功能说明、操作流程、数据导入规范与常见问题解答
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 下载按钮
+    docx_path = os.path.join(os.path.dirname(__file__), "docs", "系统操作手册.docx")
+    if os.path.exists(docx_path):
+        with open(docx_path, "rb") as f:
+            docx_bytes = f.read()
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.download_button(
+                label="⬇️ 下载系统操作手册 (.docx)",
+                data=docx_bytes,
+                file_name="跨境海外仓供应链智能决策系统_操作手册.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+    else:
+        st.warning("⚠️ 操作手册文件未找到，请确认 `docs/系统操作手册.docx` 文件存在。")
+    
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    # 快速导航卡片
+    st.markdown("<h3 style='color: #1B4965;'>📑 快速导航</h3>", unsafe_allow_html=True)
+    
+    guide_sections = [
+        ("🏠 首页仪表盘", "实时展示全链路KPI指标、关键预警与快捷入口", "#1B4965"),
+        ("📤 数据导入", "支持ERP销售/库存/预测数据的导入与Schema验证", "#2A9D8F"),
+        ("📈 需求预测分析", "Prophet+XGBoost融合预测模型，支持多维度预测对比", "#457B9D"),
+        ("📦 库存健康监控", "ABC-XYZ分类矩阵、库龄分析、缺货预警、滞销识别", "#F4A261"),
+        ("🔄 补货计划看板", "动态安全库存计算、EOQ建议、采购订单生成模拟", "#2A9D8F"),
+        ("🚚 调拨建议", "多仓库存平衡分析、调拨优先级排序、调拨成本评估", "#457B9D"),
+        ("📋 采购物流跟踪", "采购订单全生命周期跟踪、物流状态时间线、异常预警", "#1B4965"),
+    ]
+    
+    for i in range(0, len(guide_sections), 2):
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j < len(guide_sections):
+                title, desc, color = guide_sections[i + j]
+                with cols[j]:
+                    st.markdown(f"""
+                    <div style="background: white; border-radius: 12px; padding: 20px;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px;
+                                border-left: 4px solid {color};">
+                        <h4 style="color: {color}; margin: 0 0 8px 0; font-size: 16px;">{title}</h4>
+                        <p style="color: #6B7280; margin: 0; font-size: 13px; line-height: 1.5;">{desc}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    # 系统核心亮点
+    st.markdown("<h3 style='color: #1B4965;'>🎯 系统核心亮点</h3>", unsafe_allow_html=True)
+    
+    highlights = [
+        ("🤖 智能预测引擎", "Prophet（65%）+ XGBoost（35%）融合预测，时间序列交叉验证，MAPE/RMSE双指标评估"),
+        ("📊 ABC-XYZ双维分类", "销售额×需求波动双维矩阵，差异化库存管理策略，精准定位高风险SKU"),
+        ("💡 动态安全库存", "基于正态分布的服务水平模型，支持Z值参数化调节，实时响应需求变化"),
+        ("🔄 多仓协同调拨", "距离/成本/时效三优先级算法，贪心策略优化，库存平衡智能建议"),
+        ("📋 全链路可视化", "从采购下单到入库上架的物流状态漏斗，异常自动标记，预警实时推送"),
+        ("🎮 决策模拟交互", "参数实时调节，结果即时反馈，支持多场景对比分析与决策报告导出"),
+    ]
+    
+    for title, desc in highlights:
+        st.markdown(f"""
+        <div style="background: white; border-radius: 10px; padding: 16px 20px;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 12px;
+                    display: flex; align-items: flex-start; gap: 12px;">
+            <div style="font-size: 22px; line-height: 1;">{title.split(' ')[0]}</div>
+            <div style="flex: 1;">
+                <div style="font-weight: 600; color: #1B4965; font-size: 14px; margin-bottom: 4px;">
+                    {title.split(' ')[1]}
+                </div>
+                <div style="color: #6B7280; font-size: 13px; line-height: 1.5;">{desc}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    
+    # 数据来源与版本信息
+    st.markdown("<h3 style='color: #1B4965;'>ℹ️ 版本信息</h3>", unsafe_allow_html=True)
+    
+    info_col1, info_col2 = st.columns(2)
+    with info_col1:
+        st.markdown("""
+        <div style="background: #F8FAFC; border-radius: 10px; padding: 16px;">
+            <p style="margin: 0 0 8px 0; color: #1B4965; font-weight: 600;">系统版本</p>
+            <p style="margin: 0; color: #6B7280; font-size: 13px;">v1.0.0 (2025.01)</p>
+            <p style="margin: 8px 0 0 0; color: #6B7280; font-size: 13px;">技术栈：Streamlit + Python</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with info_col2:
+        st.markdown("""
+        <div style="background: #F8FAFC; border-radius: 10px; padding: 16px;">
+            <p style="margin: 0 0 8px 0; color: #1B4965; font-weight: 600;">数据覆盖</p>
+            <p style="margin: 0; color: #6B7280; font-size: 13px;">SKU：1,100+ | 仓库：6个</p>
+            <p style="margin: 8px 0 0 0; color: #6B7280; font-size: 13px;">时间跨度：2024.01 - 2025.12</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+    
+    # 开源链接
+    st.markdown("""
+    <div style="background: #E8F4F8; border-radius: 10px; padding: 16px; text-align: center;">
+        <p style="margin: 0 0 8px 0; color: #1B4965; font-weight: 600;">🔗 开源仓库</p>
+        <p style="margin: 0; color: #457B9D; font-size: 13px;">
+            GitHub: https://github.com/jiang-yishen/cross-border-scis
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# =============================================================================
 # 主入口
 # =============================================================================
 
@@ -1905,6 +2042,8 @@ def main():
         page_transfer()
     elif selected_page == "📋 采购物流跟踪":
         page_logistics()
+    elif selected_page == "📘 使用指南":
+        page_guide()
 
 
 if __name__ == "__main__":

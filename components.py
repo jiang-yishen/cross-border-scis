@@ -285,6 +285,7 @@ NAV_PAGES = [
     {"key": "replenish", "icon": "🔄", "title": "补货计划看板",   "desc": "ROP触发与EOQ建议",         "color": "#F4A261"},
     {"key": "transfer",  "icon": "🚚", "title": "调拨建议",       "desc": "智能库存调拨与成本优化",     "color": "#6B7280"},
     {"key": "logistics", "icon": "📋", "title": "采购物流跟踪",   "desc": "在途订单与到货跟踪",         "color": "#1B4965"},
+    {"key": "guide",     "icon": "📘", "title": "使用指南",       "desc": "系统操作手册与流程说明",     "color": "#457B9D"},
 ]
 
 def sidebar_navigation():
