@@ -282,6 +282,15 @@ def page_forecast():
     sales_df = load_sales_daily()
     sku_df = load_sku_master()
     
+    # 修复：SKU下拉框只显示有预测数据的SKU，避免用户选择无预测数据的SKU后明细为空
+    forecast_skus = sorted(forecast_df['SKU编码'].unique().tolist()) if not forecast_df.empty else []
+    if not forecast_skus:
+        st.warning("⚠️ 暂无预测数据，请检查数据生成状态")
+        return
+    
+    # 获取有预测数据的SKU信息，用于下拉框展示
+    sku_with_forecast = sku_df[sku_df['SKU编码'].isin(forecast_skus)].copy()
+    
     # =========================================================================
     # 参数调整区
     # =========================================================================
@@ -295,20 +304,28 @@ def page_forecast():
     col_param1, col_param2, col_param3 = st.columns(3)
     
     with col_param1:
-        # SKU选择 - 支持搜索
-        sku_list = sorted(sku_df['SKU编码'].unique().tolist())
+        # SKU选择 - 仅显示有预测数据的SKU（修复：从forecast_skus读取而非全部sku_df）
         selected_sku = st.selectbox(
             "🔍 选择SKU",
-            sku_list,
+            forecast_skus,
             index=0,
-            help="搜索并选择特定SKU查看其预测趋势"
+            help="搜索并选择特定SKU查看其预测趋势（仅显示已有预测数据的SKU）"
         )
         
-        # 获取选中SKU的信息
-        sku_info = sku_df[sku_df['SKU编码'] == selected_sku].iloc[0]
+        # 获取选中SKU的信息（添加防护：如果SKU不在sku_df中则显示默认值）
+        sku_info_row = sku_df[sku_df['SKU编码'] == selected_sku]
+        if not sku_info_row.empty:
+            sku_info = sku_info_row.iloc[0]
+            sku_name = sku_info.get('SKU名称', selected_sku)
+            sku_cat = sku_info.get('品类', '未知')
+            sku_price = sku_info.get('单价', 0)
+        else:
+            sku_name = selected_sku
+            sku_cat = '未知'
+            sku_price = 0
         st.markdown(f"""
         <div style="font-size: 12px; color: #6B7280; margin-top: 4px;">
-            📦 {sku_info['SKU名称']} | 🏷️ {sku_info['品类']} | 💰 ${sku_info['单价']}
+            📦 {sku_name} | 🏷️ {sku_cat} | 💰 ${sku_price}
         </div>
         """, unsafe_allow_html=True)
     
@@ -320,11 +337,11 @@ def page_forecast():
             help="选择未来预测的时间窗口"
         )
         
-        # 品类筛选
-        categories = sorted(sku_df['品类'].unique().tolist())
+        # 品类筛选（仅显示有预测数据的品类）
+        forecast_cats = sorted(forecast_df['品类'].unique().tolist()) if '品类' in forecast_df.columns else []
         selected_cats = st.multiselect(
             "🏷️ 筛选品类",
-            categories,
+            forecast_cats,
             default=[],
             help="选择要展示的品类（空白=展示全部）"
         )
@@ -367,7 +384,6 @@ def page_forecast():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         
         # 选定SKU的历史销量 + 预测趋势
-        # 修复：扩展历史数据范围到最近6个月，增加数据点
         sku_sales = sales_df[
             (sales_df['SKU编码'] == selected_sku) &
             (sales_df['日期'] >= '2025-07-01')
@@ -375,11 +391,14 @@ def page_forecast():
         sku_sales = sku_sales.groupby('日期')['销售数量'].sum().reset_index()
         sku_sales = sku_sales.sort_values('日期')
         
-        # 该SKU的预测数据
+        # 该SKU的预测数据（添加防护：检查日期列是否有效）
         sku_forecast = forecast_df[
             (forecast_df['SKU编码'] == selected_sku)
         ].copy()
-        sku_forecast = sku_forecast[sku_forecast['日期'] <= sku_forecast['日期'].min() + pd.Timedelta(days=forecast_days)]
+        if not sku_forecast.empty and not sku_forecast['日期'].isna().all():
+            min_date = sku_forecast['日期'].min()
+            if pd.notna(min_date):
+                sku_forecast = sku_forecast[sku_forecast['日期'] <= min_date + pd.Timedelta(days=forecast_days)]
         
         # 合并历史和预测
         fig = go.Figure()
@@ -401,14 +420,15 @@ def page_forecast():
                 line=dict(color='#E63946', width=2, dash='dash')
             ))
             
-            # 置信区间
-            fig.add_trace(go.Scatter(
-                x=sku_forecast['日期'].tolist() + sku_forecast['日期'].tolist()[::-1],
-                y=sku_forecast['预测上限'].tolist() + sku_forecast['预测下限'].tolist()[::-1],
-                fill='toself', fillcolor='rgba(230, 57, 70, 0.1)',
-                line=dict(color='rgba(255,255,255,0)'), name='置信区间',
-                showlegend=True
-            ))
+            # 置信区间（添加防护：确保上下限列存在）
+            if '预测上限' in sku_forecast.columns and '预测下限' in sku_forecast.columns:
+                fig.add_trace(go.Scatter(
+                    x=sku_forecast['日期'].tolist() + sku_forecast['日期'].tolist()[::-1],
+                    y=sku_forecast['预测上限'].tolist() + sku_forecast['预测下限'].tolist()[::-1],
+                    fill='toself', fillcolor='rgba(230, 57, 70, 0.1)',
+                    line=dict(color='rgba(255,255,255,0)'), name='置信区间',
+                    showlegend=True
+                ))
         
         fig.update_layout(
             title=f'{selected_sku} 历史销量与预测趋势',
@@ -427,7 +447,13 @@ def page_forecast():
             cat_forecast = forecast_df[forecast_df['品类'].isin(selected_cats)].copy()
         else:
             cat_forecast = forecast_df.copy()
-        cat_forecast = cat_forecast[cat_forecast['日期'] <= cat_forecast['日期'].min() + pd.Timedelta(days=30)]
+        
+        # 添加防护：确保有日期数据且不为空
+        if not cat_forecast.empty and not cat_forecast['日期'].isna().all():
+            cat_min_date = cat_forecast['日期'].min()
+            if pd.notna(cat_min_date):
+                cat_forecast = cat_forecast[cat_forecast['日期'] <= cat_min_date + pd.Timedelta(days=30)]
+        
         cat_summary = cat_forecast.groupby('品类')['预测销量'].sum().reset_index()
         cat_summary = cat_summary.sort_values('预测销量', ascending=True)
         
@@ -436,14 +462,18 @@ def page_forecast():
             '宠物用品': '#F4A261', '美妆个护': '#E63946', '运动户外': '#6B7280'
         }
         
-        fig2 = px.bar(cat_summary, x='预测销量', y='品类', orientation='h',
-                      title='各品类未来30天预测销量对比',
-                      color='品类', color_discrete_map=color_map,
-                      text='预测销量')
-        fig2.update_traces(textposition='outside', textfont_size=11)
-        fig2.update_layout(height=350, showlegend=False, yaxis_title='')
-        fig2 = apply_plotly_theme(fig2)
-        st.plotly_chart(fig2, use_container_width=True)
+        if not cat_summary.empty:
+            fig2 = px.bar(cat_summary, x='预测销量', y='品类', orientation='h',
+                          title='各品类未来30天预测销量对比',
+                          color='品类', color_discrete_map=color_map,
+                          text='预测销量')
+            fig2.update_traces(textposition='outside', textfont_size=11)
+            fig2.update_layout(height=350, showlegend=False, yaxis_title='')
+            fig2 = apply_plotly_theme(fig2)
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("无预测数据")
+        
         st.markdown('</div>', unsafe_allow_html=True)
     
     # =========================================================================
@@ -481,9 +511,14 @@ def page_forecast():
             cat_forecast_box = forecast_df[forecast_df['品类'].isin(selected_cats)].copy()
         else:
             cat_forecast_box = forecast_df.copy()
-        cat_forecast_box = cat_forecast_box[
-            cat_forecast_box['日期'] <= cat_forecast_box['日期'].min() + pd.Timedelta(days=30)
-        ]
+        
+        # 添加防护：日期有效性检查
+        if not cat_forecast_box.empty and not cat_forecast_box['日期'].isna().all():
+            box_min_date = cat_forecast_box['日期'].min()
+            if pd.notna(box_min_date):
+                cat_forecast_box = cat_forecast_box[
+                    cat_forecast_box['日期'] <= box_min_date + pd.Timedelta(days=30)
+                ]
         
         # 预测数据分布（箱线图）
         if len(cat_forecast_box) > 0:
@@ -530,24 +565,29 @@ def page_forecast():
         display_forecast['当前Prophet权重'] = prophet_weight
         display_forecast['当前XGBoost权重'] = xgb_weight
     
-    display_forecast = display_forecast[[
-        'SKU编码', '品类', '日期', '预测销量', '预测下限', '预测上限', '集成预测'
-    ]].head(50)
+    # 确保列存在（防护：如果forecast_df缺少某些列，则只展示存在的列）
+    display_cols = ['SKU编码', '品类', '日期', '预测销量', '预测下限', '预测上限', '集成预测']
+    available_cols = [c for c in display_cols if c in display_forecast.columns]
+    display_forecast = display_forecast[available_cols].head(50)
     
     st.dataframe(display_forecast, use_container_width=True, hide_index=True)
     
-    # 统计摘要
+    # 统计摘要（添加防护：空数据时显示0）
     st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
     
     summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
     with summary_col1:
-        st.metric("预测总销量", f"{display_forecast['预测销量'].sum():,.0f} 件")
+        total_pred = display_forecast['预测销量'].sum() if '预测销量' in display_forecast.columns and not display_forecast.empty else 0
+        st.metric("预测总销量", f"{total_pred:,.0f} 件")
     with summary_col2:
-        st.metric("平均日销量", f"{display_forecast['预测销量'].mean():.2f} 件")
+        avg_pred = display_forecast['预测销量'].mean() if '预测销量' in display_forecast.columns and not display_forecast.empty else 0
+        st.metric("平均日销量", f"{avg_pred:.2f} 件")
     with summary_col3:
-        st.metric("预测上限均值", f"{display_forecast['预测上限'].mean():.2f} 件")
+        upper_mean = display_forecast['预测上限'].mean() if '预测上限' in display_forecast.columns and not display_forecast.empty else 0
+        st.metric("预测上限均值", f"{upper_mean:.2f} 件")
     with summary_col4:
-        st.metric("预测下限均值", f"{display_forecast['预测下限'].mean():.2f} 件")
+        lower_mean = display_forecast['预测下限'].mean() if '预测下限' in display_forecast.columns and not display_forecast.empty else 0
+        st.metric("预测下限均值", f"{lower_mean:.2f} 件")
 
 
 def page_inventory():
