@@ -1,9 +1,12 @@
 # 跨境海外仓供应链智能决策系统 - 部署依赖
-# 去掉版本号，让 pip 自动解析兼容版本
+# Hugging Face Spaces 部署配置
 
-streamlit
-pandas
-plotly
-numpy
-openpyxl
-requests
+streamlit>=1.32.0
+pandas>=2.0.0
+plotly>=5.18.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+requests>=2.31.0
+prophet>=1.1.5
+xgboost>=2.0.0
+scikit-learn>=1.3.0
