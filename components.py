@@ -383,6 +383,13 @@ def sidebar_navigation():
                         help=pg['desc']
                     ):
                         st.session_state.nav_page = display_label
+                        display_label,
+                        key=f"nav_{pg['key']}",
+                        use_container_width=True,
+                        type=btn_type,
+                        help=pg['desc']
+                    ):
+                        st.session_state.nav_page = display_label
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
         
