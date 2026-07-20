@@ -1,0 +1,27 @@
+{
+  "admin": {
+    "name": "管理员",
+    "role": "admin",
+    "password_hash": "1092c5bd71f7721b"
+  },
+  "planner": {
+    "name": "计划专员",
+    "role": "planner",
+    "password_hash": "1505f7ca0b5430ec"
+  },
+  "viewer": {
+    "name": "查看员",
+    "role": "viewer",
+    "password_hash": "1505f7ca0b5430ec"
+  },
+  "jwy123": {
+    "password_hash": "abf5481cba38147d",
+    "name": "姜奕绅",
+    "role": "planner"
+  },
+  "jwyjys": {
+    "password_hash": "1092c5bd71f7721b",
+    "name": "姜奕绅",
+    "role": "planner"
+  }
+}

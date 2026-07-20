@@ -24,6 +24,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 import gitee_storage
+from email_service import send_feedback_email
 
 from utils import (
     load_warehouse_master, load_sku_master, load_sales_daily,
@@ -91,15 +92,39 @@ def cached_compute_kpis():
 
 
 # === User Auth Config ===
-USERS = {
-    "admin":   {"password": "jwyjys5210", "role": "admin",   "name": "Admin"},
-    "planner": {"password": "scis2024", "role": "planner", "name": "Planner"},
-    "viewer":  {"password": "scis2024", "role": "viewer",  "name": "Viewer"},
-}
+import hashlib
+
+USERS_FILE = "/opt/scis/users.json"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_users(users_data):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users_data, f, ensure_ascii=False, indent=2)
+
+def hash_password(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()[:16]
+
+def get_users():
+    raw = load_users()
+    result = {}
+    for k, v in raw.items():
+        result[k] = {
+            "password": v.get("password", v.get("password_hash", "")),
+            "role": v.get("role", "viewer"),
+            "name": v.get("name", k),
+        }
+    return result
+
+USERS = get_users()
 
 ROLE_PERMISSIONS = {
     "admin":   ["home","import","forecast","inventory","replenish","transfer","logistics","guide","ops"],
-    "planner": ["home","import","forecast","inventory","replenish","transfer","logistics","guide"],
+    "planner": ["home","import","forecast","inventory","replenish","transfer","logistics","guide","ops"],
     "viewer":  ["home","guide"],
 }
 
@@ -2247,6 +2272,11 @@ def _render_feedback_tab(gitee_config, gitee_available):
                             gitee_storage.save_feedback(feedback_data, gitee_config)
                         st.success(f"✅ 反馈提交成功！工单号：{feedback_data['id']}")
                         st.info("📋 您的反馈已持久化到 Gitee 仓库，管理员可在「系统维护」模块查看。")
+                        # 发送邮件通知
+                        with st.spinner("正在发送邮件通知..."):
+                            email_sent = send_feedback_email(feedback_data)
+                        if email_sent:
+                            st.info("📧 邮件通知已发送至管理员邮箱！")
                     except Exception as e:
                         st.error(f"❌ Gitee 提交失败：{e}")
                         st.warning("数据已保存到本地会话，请截图留存。")
@@ -2260,6 +2290,11 @@ def _render_feedback_tab(gitee_config, gitee_available):
                         st.session_state.local_feedbacks = []
                     st.session_state.local_feedbacks.append(feedback_data)
                     st.success(f"✅ 反馈提交成功！（本地会话模式）工单号：{feedback_data['id']}")
+                    # 发送邮件通知
+                    with st.spinner("正在发送邮件通知..."):
+                        email_sent = send_feedback_email(feedback_data)
+                    if email_sent:
+                        st.info("📧 邮件通知已发送至管理员邮箱！")
 
     # 我的提交历史
     st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
@@ -2405,21 +2440,60 @@ def _render_admin_tab(gitee_config, gitee_available):
                 """, unsafe_allow_html=True)
 
 
+
+
 def page_login():
     st.markdown("<style>[data-testid=\"stSidebar\"] {display: none !important;} .stApp {background: linear-gradient(135deg, #FFF8E7 0%, #FFE4C4 50%, #DEB887 100%) !important;} .main .block-container {background: transparent !important;} </style>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 1])
     with c1:
-        st.markdown("<div style=\"display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;min-height:500px;background:linear-gradient(135deg,#FFF8E7 0%,#FFE4C4 30%,#DEB887 70%,#CD853F 100%);border-radius:24px;padding:40px;color:#5D4037;text-align:center;box-shadow:0 8px 32px rgba(139,69,19,0.15);position:relative;overflow:hidden;\"><div style=\"position:absolute;top:20px;left:30px;font-size:32px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:60px;right:40px;font-size:24px;opacity:0.3;\">🐾</div><div style=\"position:absolute;bottom:80px;left:50px;font-size:28px;opacity:0.3;\">🐟</div><div style=\"position:absolute;bottom:40px;right:60px;font-size:20px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:150px;left:20px;font-size:18px;opacity:0.25;\">🐾</div><div style=\"position:absolute;top:200px;right:25px;font-size:22px;opacity:0.25;\">🐈</div><div style=\"position:relative;z-index:1;\"><div style=\"font-size:80px;margin-bottom:16px;\">🐈</div><h1 style=\"color:#5D4037;margin:0 0 8px 0;font-size:26px;font-weight:700;\">跨境海外仓</h1><h2 style=\"color:#8D6E63;margin:0 0 20px 0;font-size:18px;font-weight:500;\">供应链智能决策系统</h2><p style=\"color:#A1887F;margin:0 0 24px 0;font-size:13px;\">🐾 让库存管理更轻松，让决策更智能 🐾</p><div style=\"margin-top:24px;display:flex;gap:16px;justify-content:center;\"><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">1,100+</div><div style=\"font-size:11px;color:#8D6E63;\">📦 SKU覆盖</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">6</div><div style=\"font-size:11px;color:#8D6E63;\">🌍 海外仓库</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">2026</div><div style=\"font-size:11px;color:#8D6E63;\">🚀 系统版本</div></div></div><div style=\"margin-top:28px;font-size:12px;color:#A1887F;\">💰 等库存优化中... 💰</div></div></div>", unsafe_allow_html=True)
+        left_html = (
+            "<div style=\"display:flex;flex-direction:column;justify-content:center;align-items:center;"
+            "height:100%;min-height:500px;background:linear-gradient(135deg,#FFF8E7 0%,#FFE4C4 30%,#DEB887 70%,#CD853F 100%);"
+            "border-radius:24px;padding:40px;color:#5D4037;text-align:center;box-shadow:0 8px 32px rgba(139,69,19,0.15);"
+            "position:relative;overflow:hidden;\">"
+            "<div style=\"position:absolute;top:20px;left:30px;font-size:32px;opacity:0.4;\">🐈</div>"
+            "<div style=\"position:absolute;top:60px;right:40px;font-size:24px;opacity:0.3;\">🐾</div>"
+            "<div style=\"position:absolute;bottom:80px;left:50px;font-size:28px;opacity:0.3;\">🐟</div>"
+            "<div style=\"position:absolute;bottom:40px;right:60px;font-size:20px;opacity:0.4;\">🐈</div>"
+            "<div style=\"position:absolute;top:150px;left:20px;font-size:18px;opacity:0.25;\">🐾</div>"
+            "<div style=\"position:absolute;top:200px;right:25px;font-size:22px;opacity:0.25;\">🐈</div>"
+            "<div style=\"position:relative;z-index:1;\">"
+            "<div style=\"font-size:80px;margin-bottom:16px;\">🐈</div>"
+            "<h1 style=\"color:#5D4037;margin:0 0 8px 0;font-size:26px;font-weight:700;\">跨境海外仓</h1>"
+            "<h2 style=\"color:#8D6E63;margin:0 0 20px 0;font-size:18px;font-weight:500;\">供应链智能决策系统</h2>"
+            "<p style=\"color:#A1887F;margin:0 0 24px 0;font-size:13px;\">🐾 让库存管理更轻松，让决策更智能 🐾</p>"
+            "<div style=\"margin-top:24px;display:flex;gap:16px;justify-content:center;\">"
+            "<div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;"
+            "backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\">"
+            "<div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">1,100+</div>"
+            "<div style=\"font-size:11px;color:#8D6E63;\">📦 SKU覆盖</div></div>"
+            "<div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;"
+            "backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\">"
+            "<div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">6</div>"
+            "<div style=\"font-size:11px;color:#8D6E63;\">🌍 海外仓库</div></div>"
+            "<div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;"
+            "backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\">"
+            "<div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">2026</div>"
+            "<div style=\"font-size:11px;color:#8D6E63;\">🚀 系统版本</div></div></div>"
+            "<div style=\"margin-top:32px;background:rgba(255,255,255,0.25);border-radius:16px;padding:18px 24px;"
+            "border:1px dashed rgba(139,69,19,0.2);\">"
+            "<div style=\"font-size:22px;margin-bottom:8px;\">🐈 ✨ 🐈</div>"
+            "<p style=\"color:#6D4C41;font-size:15px;font-weight:600;margin:0 0 6px 0;\">今天又是元气满满的一天！</p>"
+            "<p style=\"color:#8D6E63;font-size:12px;margin:0;\">💼 开始搬砖 &nbsp;|&nbsp; 🎯 搞钱要紧 &nbsp;|&nbsp; 🚀 冲冲冲</p></div>"
+            "</div></div>"
+        )
+        st.markdown(left_html, unsafe_allow_html=True)
     with c2:
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         st.markdown("<div style=\"background:#FFF8E7;border-radius:20px;padding:32px 28px;box-shadow:0 8px 32px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.35);\">", unsafe_allow_html=True)
+        st.markdown("<div style=\"text-align:center;margin-bottom:8px;\"><div style=\"font-size:28px;\">🐈 🐾 🐈</div></div>", unsafe_allow_html=True)
         st.markdown("<div style=\"text-align:center;margin-bottom:24px;\"><div style=\"font-size:36px;margin-bottom:8px;\">🔐</div><h2 style=\"color:#5D4037;margin:0;font-size:22px;\">Welcome</h2><p style=\"color:#8D6E63;margin:4px 0 0 0;font-size:13px;\">Please login</p></div>", unsafe_allow_html=True)
         with st.form("login_form"):
-            username = st.text_input("Username", placeholder="Enter username")
-            password = st.text_input("Password", type="password", placeholder="Enter password")
-            submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+            username = st.text_input("👤 用户名", placeholder="请输入用户名")
+            password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+            submitted = st.form_submit_button("🔐 登录", use_container_width=True, type="primary")
             if submitted:
-                if username in USERS and USERS[username]["password"] == password:
+                if username in USERS and USERS[username]["password"] == hash_password(password):
                     st.session_state.user_logged_in = True
                     st.session_state.user_info = {"username": username, "name": USERS[username]["name"], "role": USERS[username]["role"]}
                     st.session_state.user_allowed_keys = ROLE_PERMISSIONS[USERS[username]["role"]]
@@ -2428,8 +2502,73 @@ def page_login():
                 else:
                     st.error("Invalid username or password")
         st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div style=\"background:#FFF0D4;border-radius:10px;padding:16px;margin-top:16px;border:1px dashed #DEB887;\"><p style=\"color:#5D4037;font-weight:600;margin:0 0 8px 0;font-size:13px;\">🐾 Demo Accounts</p><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#6D4C41;\"><div><b>admin</b> / jwyjys5210</div><div><span style=\"color:#A1887F;\">Full Access</span></div><div><b>planner</b> / scis2024</div><div><span style=\"color:#A1887F;\">Planner</span></div><div><b>viewer</b> / scis2024</div><div><span style=\"color:#A1887F;\">Read Only</span></div></div></div>", unsafe_allow_html=True)
+        if st.button("📝 新用户注册", use_container_width=True, key="goto_register"):
+            st.session_state.show_register = True
+            st.rerun()
+        guide_html = (
+            "<div style=\"background:#FFF0D4;border-radius:10px;padding:16px;margin-top:16px;border:1px dashed #DEB887;\">"
+            "<p style=\"color:#5D4037;font-weight:600;margin:0 0 10px 0;font-size:13px;\">🐾 新用户指引</p>"
+            "<p style=\"color:#6D4C41;font-size:12px;margin:0 0 8px 0;line-height:1.6;\">"
+            "✅ 首次使用？点击上方 <b>📝 新用户注册</b> 创建账号</p>"
+            "<p style=\"color:#6D4C41;font-size:12px;margin:0 0 8px 0;line-height:1.6;\">"
+            "🔑 忘记密码？请联系管理员重置</p>"
+            "<p style=\"color:#8D6E63;font-size:11px;margin:4px 0 0 0;\">📧 管理员邮箱: 15143585991@163.com</p></div>"
+        )
+        st.markdown(guide_html, unsafe_allow_html=True)
 
+def page_register():
+    """用户注册页面"""
+    st.markdown("<style>[data-testid=\"stSidebar\"] {display: none !important;} .stApp {background: linear-gradient(135deg, #FFF8E7 0%, #FFE4C4 50%, #DEB887 100%) !important;} .main .block-container {background: transparent !important;} </style>", unsafe_allow_html=True)
+    
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown("<div style=\"display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;min-height:500px;background:linear-gradient(135deg,#FFF8E7 0%,#FFE4C4 30%,#DEB887 70%,#CD853F 100%);border-radius:24px;padding:40px;color:#5D4037;text-align:center;box-shadow:0 8px 32px rgba(139,69,19,0.15);position:relative;overflow:hidden;\"><div style=\"position:absolute;top:20px;left:30px;font-size:32px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:60px;right:40px;font-size:24px;opacity:0.3;\">🐾</div><div style=\"position:absolute;bottom:80px;left:50px;font-size:28px;opacity:0.3;\">🐟</div><div style=\"position:absolute;bottom:40px;right:60px;font-size:20px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:150px;left:20px;font-size:18px;opacity:0.25;\">🐾</div><div style=\"position:absolute;top:200px;right:25px;font-size:22px;opacity:0.25;\">🐈</div><div style=\"position:relative;z-index:1;\"><div style=\"font-size:80px;margin-bottom:16px;\">🐈</div><h1 style=\"color:#5D4037;margin:0 0 8px 0;font-size:26px;font-weight:700;\">跨境海外仓</h1><h2 style=\"color:#8D6E63;margin:0 0 20px 0;font-size:18px;font-weight:500;\">供应链智能决策系统</h2><p style=\"color:#A1887F;margin:0 0 24px 0;font-size:13px;\">🐾 让库存管理更轻松，让决策更智能 🐾</p><div style=\"margin-top:24px;display:flex;gap:16px;justify-content:center;\"><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">1,100+</div><div style=\"font-size:11px;color:#8D6E63;\">📦 SKU覆盖</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">6</div><div style=\"font-size:11px;color:#8D6E63;\">🌍 海外仓库</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">2026</div><div style=\"font-size:11px;color:#8D6E63;\">🚀 系统版本</div></div></div></div></div>", unsafe_allow_html=True)
+    
+    with c2:
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style=\"background:#FFF8E7;border-radius:20px;padding:32px 28px;box-shadow:0 8px 32px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.35);\">", unsafe_allow_html=True)
+        st.markdown("<div style=\"text-align:center;margin-bottom:24px;\"><div style=\"font-size:36px;margin-bottom:8px;\">📝</div><h2 style=\"color:#5D4037;margin:0;font-size:22px;\">用户注册</h2><p style=\"color:#8D6E63;margin:4px 0 0 0;font-size:13px;\">Create your account</p></div>", unsafe_allow_html=True)
+        
+        with st.form("register_form"):
+            reg_username = st.text_input("用户名", placeholder="输入用户名（3-20位字母数字）", key="reg_user")
+            reg_name = st.text_input("姓名", placeholder="输入真实姓名", key="reg_name")
+            reg_pwd = st.text_input("密码", type="password", placeholder="至少6位", key="reg_pwd")
+            reg_pwd2 = st.text_input("确认密码", type="password", placeholder="再次输入密码", key="reg_pwd2")
+            reg_role = st.selectbox("角色", ["viewer", "planner"], format_func=lambda x: "查看员" if x=="viewer" else "计划专员", key="reg_role")
+            submitted = st.form_submit_button("注册", use_container_width=True, type="primary")
+            
+            if submitted:
+                users_data = load_users()
+                
+                # 验证
+                if not reg_username or not reg_pwd:
+                    st.error("❌ 用户名和密码不能为空")
+                elif len(reg_username) < 3 or len(reg_username) > 20:
+                    st.error("❌ 用户名长度需在3-20位之间")
+                elif len(reg_pwd) < 6:
+                    st.error("❌ 密码至少6位")
+                elif reg_pwd != reg_pwd2:
+                    st.error("❌ 两次密码不一致")
+                elif reg_username in users_data:
+                    st.error("❌ 用户名已存在")
+                else:
+                    users_data[reg_username] = {
+                        "password_hash": hash_password(reg_pwd),
+                        "name": reg_name or reg_username,
+                        "role": reg_role
+                    }
+                    save_users(users_data)
+                    st.success(f"✅ 注册成功！请返回登录页面")
+                    st.info("点击左下角 ↩️ 返回登录")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # 返回登录按钮
+        if st.button("↩️ 已有账号？返回登录", use_container_width=True, key="back_to_login"):
+            st.session_state.show_register = False
+            st.rerun()
+        
+        st.markdown("<div style=\"background:#FFF0D4;border-radius:10px;padding:16px;margin-top:16px;border:1px dashed #DEB887;\"><p style=\"color:#5D4037;font-weight:600;margin:0 0 8px 0;font-size:13px;\">🐾 说明</p><p style=\"color:#6D4C41;font-size:12px;margin:0;\">注册后默认权限为查看员。如需申请计划专员权限，请联系管理员。</p></div>", unsafe_allow_html=True)
 
 # =============================================================================
 # 主入口
@@ -2447,9 +2586,12 @@ def main():
     if "user_info" not in st.session_state:
         st.session_state.user_info = None
     
-    # Not logged in -> show login page
+    # Not logged in -> show login or register page
     if not st.session_state.get("user_logged_in", False):
-        page_login()
+        if st.session_state.get("show_register", False):
+            page_register()
+        else:
+            page_login()
         return
     
     # 侧边栏导航
