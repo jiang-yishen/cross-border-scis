@@ -1,0 +1,11 @@
+import paramiko
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect('47.239.173.51', username='root', password='JWYjys5210@', timeout=15)
+sftp = client.open_sftp()
+sftp.put(r'C:\Users\11363\Desktop\供应链计划面试\供应链优化项目\server_backup\components.py', '/opt/scis/components.py')
+sftp.close()
+stdin, stdout, stderr = client.exec_command('sudo systemctl restart scis-streamlit')
+print('Restart:', stdout.read().decode().strip(), stderr.read().decode().strip())
+client.close()
+print('Done')

@@ -37,6 +37,72 @@ from components import (
     create_pie_chart, create_heatmap, apply_plotly_theme
 )
 
+# === Data Caching (Phase 7) ===
+import time
+
+# Cache TTL: 5 minutes for data files, 1 hour for static lookups
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_home_cache():
+    return load_home_cache()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_sales_daily():
+    return load_sales_daily()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_sku_master():
+    return load_sku_master()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_warehouse_master():
+    return load_warehouse_master()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_demand_forecast():
+    return load_demand_forecast()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_replenishment_plan():
+    return load_replenishment_plan()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_inventory_snapshot():
+    return load_inventory_snapshot()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_transfer_recommendation():
+    return load_transfer_recommendation()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_logistics_tracking():
+    return load_logistics_tracking()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_purchase_orders():
+    return load_purchase_orders()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_load_inventory_health_report():
+    return load_inventory_health_report()
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_compute_kpis():
+    return compute_kpis()
+
+
+# === User Auth Config ===
+USERS = {
+    "admin":   {"password": "jwyjys5210", "role": "admin",   "name": "Admin"},
+    "planner": {"password": "scis2024", "role": "planner", "name": "Planner"},
+    "viewer":  {"password": "scis2024", "role": "viewer",  "name": "Viewer"},
+}
+
+ROLE_PERMISSIONS = {
+    "admin":   ["home","import","forecast","inventory","replenish","transfer","logistics","guide","ops"],
+    "planner": ["home","import","forecast","inventory","replenish","transfer","logistics","guide"],
+    "viewer":  ["home","guide"],
+}
+
 
 # =============================================================================
 # 页面1: 首页仪表盘
@@ -47,7 +113,7 @@ def page_home():
     page_header("首页仪表盘", "实时监控跨境海外仓供应链全局运行状态")
     
     # 计算KPI
-    kpis = compute_kpis()
+    kpis = cached_compute_kpis()
     
     # 第一行KPI卡片
     kpi_row([
@@ -92,7 +158,7 @@ def page_home():
     st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
     
     # 图表区域 - 优先使用预计算缓存（避免加载大CSV，解决云端内存溢出）
-    cache = load_home_cache()
+    cache = cached_load_home_cache()
     use_cache = cache is not None
     
     col1, col2 = st.columns(2)
@@ -104,8 +170,8 @@ def page_home():
         if use_cache and 'cat_sales' in cache:
             cat_sales = pd.DataFrame(cache['cat_sales'])
         else:
-            sales_df = load_sales_daily()
-            sku_df = load_sku_master()
+            sales_df = cached_load_sales_daily()
+            sku_df = cached_load_sku_master()
             merged = sales_df.merge(sku_df[['SKU编码', '品类']], on='SKU编码', how='left')
             cat_sales = merged.groupby('品类')['销售数量'].sum().reset_index()
             cat_sales = cat_sales.sort_values('销售数量', ascending=False)
@@ -128,7 +194,7 @@ def page_home():
         if use_cache and 'abc_dist' in cache:
             abc_dist = pd.DataFrame(cache['abc_dist'])
         else:
-            rep_df = load_replenishment_plan()
+            rep_df = cached_load_replenishment_plan()
             abc_dist = rep_df.groupby('ABC分类')['SKU编码'].nunique().reset_index()
             abc_dist.columns = ['ABC分类', 'SKU数量']
         
@@ -149,8 +215,8 @@ def page_home():
         if use_cache and 'inv_wh' in cache:
             inv_wh = pd.DataFrame(cache['inv_wh'])
         else:
-            inv_df = load_inventory_snapshot()
-            wh_df = load_warehouse_master()
+            inv_df = cached_load_inventory_snapshot()
+            wh_df = cached_load_warehouse_master()
             inv_wh = inv_df.groupby('仓库ID')['总数量'].sum().reset_index()
             inv_wh = inv_wh.merge(wh_df[['仓库ID', '仓库名称']], on='仓库ID', how='left')
         
@@ -167,7 +233,7 @@ def page_home():
         if use_cache and 'alert_dist' in cache:
             alert_dist = pd.DataFrame(cache['alert_dist'])
         else:
-            rep_df = load_replenishment_plan()
+            rep_df = cached_load_replenishment_plan()
             alert_dist = rep_df.groupby('库存预警').size().reset_index(name='数量')
         
         alert_colors = {
@@ -362,9 +428,9 @@ def page_forecast():
     page_header("需求预测分析", "基于Prophet + XGBoost混合模型的SKU级需求预测")
     
     # 加载数据
-    forecast_df = load_demand_forecast()
-    sales_df = load_sales_daily()
-    sku_df = load_sku_master()
+    forecast_df = cached_load_demand_forecast()
+    sales_df = cached_load_sales_daily()
+    sku_df = cached_load_sku_master()
     
     # 修复：SKU下拉框只显示有预测数据的SKU，避免用户选择无预测数据的SKU后明细为空
     forecast_skus = sorted(forecast_df['SKU编码'].unique().tolist()) if not forecast_df.empty else []
@@ -380,8 +446,13 @@ def page_forecast():
     # =========================================================================
     st.markdown("""
     <div style="background: white; border-radius: 12px; padding: 20px; 
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 参数调整</h4>
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+                border-left: 4px solid linear-gradient(180deg, #1B4965 0%, #2A9D8F 100%);">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <span style="font-size: 16px; font-weight: 700; color: #1B4965;">参数调整</span>
+        </div>
+        <div style="font-size: 12px; color: #6B7280;">调整模型参数后点击重新计算预测</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -679,18 +750,23 @@ def page_inventory():
     page_header("库存健康监控", "ABC-XYZ分类、库存预警、库龄分析与智能补货决策")
     
     # 加载数据
-    rep_df = load_replenishment_plan()
-    inv_df = load_inventory_snapshot()
-    wh_df = load_warehouse_master()
-    sku_df = load_sku_master()
+    rep_df = cached_load_replenishment_plan()
+    inv_df = cached_load_inventory_snapshot()
+    wh_df = cached_load_warehouse_master()
+    sku_df = cached_load_sku_master()
     
     # =========================================================================
     # 参数调整区（决策模拟）
     # =========================================================================
     st.markdown("""
     <div style="background: white; border-radius: 12px; padding: 20px; 
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 库存参数调整（决策模拟）</h4>
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+                border-left: 4px solid #E63946;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <span style="font-size: 16px; font-weight: 700; color: #1B4965;">库存参数调整（决策模拟）</span>
+        </div>
+        <div style="font-size: 12px; color: #6B7280;">调整A类占比和服务水平后，系统将模拟新的安全库存和预警结果</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -931,17 +1007,22 @@ def page_replenishment():
     page_header("补货计划看板", "ROP触发监控、安全库存水位、EOQ建议与补货参数决策模拟")
     
     # 加载数据
-    rep_df = load_replenishment_plan()
-    sku_df = load_sku_master()
-    po_df = load_purchase_orders()
+    rep_df = cached_load_replenishment_plan()
+    sku_df = cached_load_sku_master()
+    po_df = cached_load_purchase_orders()
     
     # =========================================================================
     # 参数调整区（决策模拟）
     # =========================================================================
     st.markdown("""
     <div style="background: white; border-radius: 12px; padding: 20px; 
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 补货参数调整（决策模拟）</h4>
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+                border-left: 4px solid #1B4965;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <span style="font-size: 16px; font-weight: 700; color: #1B4965;">补货参数调整（决策模拟）</span>
+        </div>
+        <div style="font-size: 12px; color: #6B7280;">调整参数后系统将模拟新的安全库存、ROP触发和EOQ建议</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1315,17 +1396,22 @@ def page_transfer():
     page_header("调拨建议", "红预警仓→富余仓智能匹配与优先级排序")
     
     # 加载数据
-    transfer_df = load_transfer_recommendation()
-    sku_df = load_sku_master()
-    wh_df = load_warehouse_master()
+    transfer_df = cached_load_transfer_recommendation()
+    sku_df = cached_load_sku_master()
+    wh_df = cached_load_warehouse_master()
     
     # =========================================================================
     # 参数调整区（决策模拟）
     # =========================================================================
     st.markdown("""
     <div style="background: white; border-radius: 12px; padding: 20px; 
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-        <h4 style="color: #1B4965; margin-top: 0;">⚙️ 调拨优先级模型（决策模拟）</h4>
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+                border-left: 4px solid #F4A261;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span style="font-size: 20px;">⚙️</span>
+            <span style="font-size: 16px; font-weight: 700; color: #1B4965;">调拨优先级模型（决策模拟）</span>
+        </div>
+        <div style="font-size: 12px; color: #6B7280;">选择调拨方案排序的优先级维度，系统将智能匹配红预警仓与富余仓</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1583,18 +1669,23 @@ def page_logistics():
     page_header("采购物流跟踪", "采购订单状态监控、物流时间线追踪与到货预测")
     
     # 加载数据
-    po_df = load_purchase_orders()
-    log_df = load_logistics_tracking()
-    sku_df = load_sku_master()
-    wh_df = load_warehouse_master()
+    po_df = cached_load_purchase_orders()
+    log_df = cached_load_logistics_tracking()
+    sku_df = cached_load_sku_master()
+    wh_df = cached_load_warehouse_master()
     
     # =========================================================================
     # 参数筛选区
     # =========================================================================
     st.markdown("""
     <div style="background: white; border-radius: 12px; padding: 20px; 
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-        <h4 style="color: #1B4965; margin-top: 0;">🔍 筛选条件</h4>
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+                border-left: 4px solid #457B9D;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <span style="font-size: 20px;">🔍</span>
+            <span style="font-size: 16px; font-weight: 700; color: #1B4965;">筛选条件</span>
+        </div>
+        <div style="font-size: 12px; color: #6B7280;">按订单状态、物流状态、供应商、承运商筛选采购订单</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -2314,6 +2405,32 @@ def _render_admin_tab(gitee_config, gitee_available):
                 """, unsafe_allow_html=True)
 
 
+def page_login():
+    st.markdown("<style>[data-testid=\"stSidebar\"] {display: none !important;} .stApp {background: linear-gradient(135deg, #FFF8E7 0%, #FFE4C4 50%, #DEB887 100%) !important;} .main .block-container {background: transparent !important;} </style>", unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown("<div style=\"display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;min-height:500px;background:linear-gradient(135deg,#FFF8E7 0%,#FFE4C4 30%,#DEB887 70%,#CD853F 100%);border-radius:24px;padding:40px;color:#5D4037;text-align:center;box-shadow:0 8px 32px rgba(139,69,19,0.15);position:relative;overflow:hidden;\"><div style=\"position:absolute;top:20px;left:30px;font-size:32px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:60px;right:40px;font-size:24px;opacity:0.3;\">🐾</div><div style=\"position:absolute;bottom:80px;left:50px;font-size:28px;opacity:0.3;\">🐟</div><div style=\"position:absolute;bottom:40px;right:60px;font-size:20px;opacity:0.4;\">🐈</div><div style=\"position:absolute;top:150px;left:20px;font-size:18px;opacity:0.25;\">🐾</div><div style=\"position:absolute;top:200px;right:25px;font-size:22px;opacity:0.25;\">🐈</div><div style=\"position:relative;z-index:1;\"><div style=\"font-size:80px;margin-bottom:16px;\">🐈</div><h1 style=\"color:#5D4037;margin:0 0 8px 0;font-size:26px;font-weight:700;\">跨境海外仓</h1><h2 style=\"color:#8D6E63;margin:0 0 20px 0;font-size:18px;font-weight:500;\">供应链智能决策系统</h2><p style=\"color:#A1887F;margin:0 0 24px 0;font-size:13px;\">🐾 让库存管理更轻松，让决策更智能 🐾</p><div style=\"margin-top:24px;display:flex;gap:16px;justify-content:center;\"><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">1,100+</div><div style=\"font-size:11px;color:#8D6E63;\">📦 SKU覆盖</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">6</div><div style=\"font-size:11px;color:#8D6E63;\">🌍 海外仓库</div></div><div style=\"background:rgba(255,248,231,0.85);border-radius:16px;padding:16px 20px;text-align:center;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.4);\"><div style=\"font-size:28px;font-weight:700;color:#6D4C41;\">2026</div><div style=\"font-size:11px;color:#8D6E63;\">🚀 系统版本</div></div></div><div style=\"margin-top:28px;font-size:12px;color:#A1887F;\">💰 等库存优化中... 💰</div></div></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style=\"background:#FFF8E7;border-radius:20px;padding:32px 28px;box-shadow:0 8px 32px rgba(139,69,19,0.12);border:1px solid rgba(222,184,135,0.35);\">", unsafe_allow_html=True)
+        st.markdown("<div style=\"text-align:center;margin-bottom:24px;\"><div style=\"font-size:36px;margin-bottom:8px;\">🔐</div><h2 style=\"color:#5D4037;margin:0;font-size:22px;\">Welcome</h2><p style=\"color:#8D6E63;margin:4px 0 0 0;font-size:13px;\">Please login</p></div>", unsafe_allow_html=True)
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
+            submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+            if submitted:
+                if username in USERS and USERS[username]["password"] == password:
+                    st.session_state.user_logged_in = True
+                    st.session_state.user_info = {"username": username, "name": USERS[username]["name"], "role": USERS[username]["role"]}
+                    st.session_state.user_allowed_keys = ROLE_PERMISSIONS[USERS[username]["role"]]
+                    st.success(f"Welcome, {USERS[username]['name']}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style=\"background:#FFF0D4;border-radius:10px;padding:16px;margin-top:16px;border:1px dashed #DEB887;\"><p style=\"color:#5D4037;font-weight:600;margin:0 0 8px 0;font-size:13px;\">🐾 Demo Accounts</p><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#6D4C41;\"><div><b>admin</b> / jwyjys5210</div><div><span style=\"color:#A1887F;\">Full Access</span></div><div><b>planner</b> / scis2024</div><div><span style=\"color:#A1887F;\">Planner</span></div><div><b>viewer</b> / scis2024</div><div><span style=\"color:#A1887F;\">Read Only</span></div></div></div>", unsafe_allow_html=True)
+
+
 # =============================================================================
 # 主入口
 # =============================================================================
@@ -2323,6 +2440,17 @@ def main():
     # 全局配置
     set_page_config()
     apply_custom_css()
+    
+    # Login state init
+    if "user_logged_in" not in st.session_state:
+        st.session_state.user_logged_in = False
+    if "user_info" not in st.session_state:
+        st.session_state.user_info = None
+    
+    # Not logged in -> show login page
+    if not st.session_state.get("user_logged_in", False):
+        page_login()
+        return
     
     # 侧边栏导航
     selected_page = sidebar_navigation()
